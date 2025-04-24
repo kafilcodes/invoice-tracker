@@ -22,3 +22,43 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Sensitive and project documentation files
+**/technical-implementation-guide.md
+**/project-readme.md
+**/*-guide.md
+**/*-implementation.md
+**/*-sensitive.md
+**/GOOGLE-OAUTH-SETUP.md
+**/GOOGLE-AUTH-DEBUG.md
+**/ENV-SETUP-GUIDE.md
+.env
+.env.local
+.env.development
+.env.production
+.env.test
+
+# Cursor and IDE specific files
+.cursor/
+.cursor-*
+cursor_settings/
+**/cursor/
+.cursorrules
+.cursorignore
+
+# Project management files
+/docs/internal/
+/planning/
+/design/
+**/*-notes.md
+**/*-TODO.md
+
+# Backend sensitive data
+server/config/keys.js
+server/config/secrets.js
+**/credentials/
+**/keys/
+
+# Temp files
+**/temp/
+**/tmp/
