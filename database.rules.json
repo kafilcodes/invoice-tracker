@@ -1,0 +1,29 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    
+    "activityLogs": {
+      ".indexOn": ["companyId", "timestamp"],
+      "$logId": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      }
+    },
+    
+    "notifications": {
+      "$userId": {
+        ".indexOn": ["timestamp", "read"],
+        ".read": "auth != null && auth.uid == $userId",
+        ".write": "auth != null && auth.uid == $userId"
+      }
+    },
+    
+    "stats": {
+      "$companyId": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      }
+    }
+  }
+} 

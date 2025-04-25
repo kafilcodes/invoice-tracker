@@ -19,6 +19,15 @@ const getSidebarState = () => {
   return window.innerWidth > 768;
 };
 
+// Get saved settings from localStorage if available
+const getSavedSettings = () => {
+  const savedSettings = localStorage.getItem('systemSettings');
+  if (savedSettings !== null) {
+    return JSON.parse(savedSettings);
+  }
+  return null;
+};
+
 const initialState = {
   darkMode: getPreferredTheme(),
   sidebarOpen: getSidebarState(),
@@ -30,6 +39,38 @@ const initialState = {
     dashboard: false,
     invoices: false,
     users: false,
+  },
+  settings: getSavedSettings() || {
+    general: {
+      companyName: 'Acme Corporation',
+      contactEmail: 'admin@example.com',
+      defaultCurrency: 'USD',
+      dateFormat: 'MM/DD/YYYY',
+      language: 'en',
+      timezone: 'UTC',
+    },
+    invoice: {
+      autoGenerateNumbers: true,
+      numberPrefix: 'INV-',
+      defaultDueDays: 30,
+      requireNotesForRejection: true,
+      allowEditsAfterApproval: false,
+      notifyOnStatusChange: true,
+    },
+    notification: {
+      sendEmailNotifications: true,
+      emailOnNewInvoice: true,
+      emailOnApproval: true,
+      emailOnRejection: true,
+      emailOnAssignment: true,
+      digestFrequency: 'daily',
+    },
+    storage: {
+      storageBucket: 'invoice-tracker-962af.firebasestorage.app',
+      fileSizeLimit: 5,
+      allowedFileTypes: '.pdf,.jpg,.jpeg,.png',
+      deleteFilesWithInvoice: true,
+    }
   },
 };
 
@@ -77,6 +118,13 @@ const uiSlice = createSlice({
       const { key, value } = action.payload;
       state.loading[key] = value;
     },
+    updateSettings: (state, action) => {
+      state.settings = {
+        ...state.settings,
+        ...action.payload
+      };
+      localStorage.setItem('systemSettings', JSON.stringify(state.settings));
+    },
   },
 });
 
@@ -91,6 +139,7 @@ export const {
   removeNotification,
   clearNotifications,
   setLoading,
+  updateSettings,
 } = uiSlice.actions;
 
 export default uiSlice.reducer; 

@@ -1,38 +1,120 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
-import axios from 'axios';
+import realtimeDb from '../../firebase/realtimeDatabase';
+import { uploadFile } from '../../firebase/storage';
+import { v4 as uuidv4 } from 'uuid';
 
-const API_URL = '/api/invoices';
-
-// Get all invoices with filtering, sorting and pagination
-export const getInvoices = createAsyncThunk(
-  'invoices/getAll',
-  async (params, thunkAPI) => {
+// Upload invoice attachment
+export const uploadInvoiceAttachment = createAsyncThunk(
+  'invoices/uploadAttachment',
+  async ({ file, invoiceId, organizationId }, { rejectWithValue }) => {
     try {
-      const queryParams = new URLSearchParams();
-      
-      // Add pagination params
-      if (params.page) queryParams.append('page', params.page);
-      if (params.limit) queryParams.append('limit', params.limit);
-      
-      // Add sorting params
-      if (params.sortField) queryParams.append('sortField', params.sortField);
-      if (params.sortDirection) queryParams.append('sortDirection', params.sortDirection);
-      
-      // Add filter params
-      if (params.search) queryParams.append('search', params.search);
-      if (params.status) queryParams.append('status', params.status);
-      if (params.date) {
-        const [year, month] = params.date.split('-');
-        queryParams.append('year', year);
-        queryParams.append('month', month);
+      if (!file || !invoiceId || !organizationId) {
+        return rejectWithValue('Missing required parameters');
       }
       
-      const response = await axios.get(`${API_URL}?${queryParams.toString()}`);
-      return response.data;
-    } catch (error) {
-      return thunkAPI.rejectWithValue(
-        error.response?.data?.message || 'Failed to fetch invoices'
+      const filePath = `organizations/${organizationId}/invoices/${invoiceId}/attachments/${file.name}`;
+      const fileUrl = await uploadFile(
+        file,
+        filePath,
+        (progress) => console.log(`Upload progress: ${progress}%`)
       );
+      
+      return {
+        name: file.name,
+        type: file.type,
+        size: file.size,
+        url: fileUrl,
+        path: filePath,
+        uploadedAt: new Date().toISOString(),
+      };
+    } catch (error) {
+      return rejectWithValue(error.message || 'Failed to upload attachment');
+    }
+  }
+);
+
+// Get all invoices for a specific organization
+export const getInvoices = createAsyncThunk(
+  'invoices/getAll',
+  async (params = {}, { getState, rejectWithValue }) => {
+    try {
+      const { auth } = getState();
+      const { user } = auth;
+      const organizationName = user?.organization;
+      
+      if (!organizationName) {
+        return rejectWithValue('No organization associated with user');
+      }
+      
+      const orgId = organizationName;
+      console.log(`Fetching invoices for organization: ${orgId}`);
+      
+      const queryResult = await realtimeDb.getData(`organizations/${orgId}/invoices`);
+      
+      if (!queryResult.success) {
+        return rejectWithValue(queryResult.error || 'Failed to fetch invoices');
+      }
+      
+      // Convert Firebase object to array
+      let invoices = [];
+      if (queryResult.data) {
+        invoices = Object.keys(queryResult.data).map(key => ({
+          _id: key,
+          ...queryResult.data[key]
+        }));
+        
+        // Apply sorting if specified
+        if (params?.sortField) {
+          const { sortField, sortDirection } = params;
+          invoices.sort((a, b) => {
+            if (sortDirection === 'asc') {
+              return a[sortField] > b[sortField] ? 1 : -1;
+            } else {
+              return a[sortField] < b[sortField] ? 1 : -1;
+            }
+          });
+        } else {
+          // Default sort by createdAt (newest first)
+          invoices.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        }
+        
+        // Apply filtering if provided
+        if (params?.search) {
+          const searchLower = params.search.toLowerCase();
+          invoices = invoices.filter(invoice => 
+            invoice.invoiceNumber?.toLowerCase().includes(searchLower) ||
+            invoice.vendorName?.toLowerCase().includes(searchLower) ||
+            invoice.description?.toLowerCase().includes(searchLower)
+          );
+        }
+        
+        if (params?.status) {
+          invoices = invoices.filter(invoice => invoice.status === params.status);
+        }
+        
+        if (params?.date) {
+          const [year, month] = params.date.split('-');
+          invoices = invoices.filter(invoice => {
+            const invoiceDate = new Date(invoice.createdAt);
+            return invoiceDate.getFullYear() === Number(year) && 
+                   invoiceDate.getMonth() + 1 === Number(month);
+          });
+        }
+      }
+      
+      // Handle pagination
+      const total = invoices.length;
+      if (params?.page && params?.limit) {
+        const page = parseInt(params.page);
+        const limit = parseInt(params.limit);
+        const startIndex = (page - 1) * limit;
+        invoices = invoices.slice(startIndex, startIndex + limit);
+      }
+      
+      return { invoices, total };
+    } catch (error) {
+      console.error('Error getting invoices:', error);
+      return rejectWithValue(error.message || 'Failed to fetch invoices');
     }
   }
 );
@@ -40,14 +122,28 @@ export const getInvoices = createAsyncThunk(
 // Get a single invoice by ID
 export const getInvoiceById = createAsyncThunk(
   'invoices/getById',
-  async (id, thunkAPI) => {
+  async (id, { getState, rejectWithValue }) => {
     try {
-      const response = await axios.get(`${API_URL}/${id}`);
-      return response.data;
+      const { auth } = getState();
+      const { user } = auth;
+      const organizationName = user?.organization;
+      
+      if (!organizationName) {
+        return rejectWithValue('No organization associated with user');
+      }
+      
+      const orgId = organizationName;
+      
+      const invoiceResult = await realtimeDb.getData(`organizations/${orgId}/invoices/${id}`);
+      
+      if (!invoiceResult.success || !invoiceResult.data) {
+        return rejectWithValue('Invoice not found');
+      }
+      
+      return { _id: id, ...invoiceResult.data };
     } catch (error) {
-      return thunkAPI.rejectWithValue(
-        error.response?.data?.message || 'Failed to fetch invoice'
-      );
+      console.error(`Error getting invoice ${id}:`, error);
+      return rejectWithValue(error.message || 'Failed to fetch invoice');
     }
   }
 );
@@ -55,14 +151,125 @@ export const getInvoiceById = createAsyncThunk(
 // Create a new invoice
 export const createInvoice = createAsyncThunk(
   'invoices/create',
-  async (invoiceData, thunkAPI) => {
+  async (invoiceData, { getState, rejectWithValue }) => {
     try {
-      const response = await axios.post(API_URL, invoiceData);
-      return response.data;
+      const { auth } = getState();
+      const { user } = auth;
+      
+      // Extract organization name from user data
+      const organizationName = user?.organization;
+      
+      if (!organizationName) {
+        console.error('Invoice creation failed: No organization associated with user');
+        return rejectWithValue('No organization associated with user');
+      }
+      
+      // Preserve original organization name from user profile
+      const orgId = organizationName;
+      
+      console.log(`Creating invoice for organization: "${orgId}"`);
+      
+      // Test database permissions before attempting to write
+      const permissionTest = await realtimeDb.testDatabasePermissions(`organizations/${orgId}/invoices`);
+      
+      if (!permissionTest.success) {
+        console.error(`Permission denied for organizations/${orgId}/invoices - Cannot create invoice`);
+        return rejectWithValue(`Database write permission denied: ${permissionTest.error || 'Access denied'}`);
+      }
+      
+      // Process file attachments if any
+      let attachments = [];
+      if (invoiceData.attachments && invoiceData.attachments.length > 0) {
+        for (const file of invoiceData.attachments) {
+          try {
+            console.log(`Uploading attachment: ${file.name}`);
+            const fileUrl = await uploadFile(
+              file, 
+              `organizations/${orgId}/invoices/attachments`,
+              (progress) => console.log(`Upload progress: ${progress}%`)
+            );
+            
+            attachments.push({
+              name: file.name,
+              type: file.type,
+              size: file.size,
+              url: fileUrl,
+              uploadedAt: new Date().toISOString(),
+            });
+            console.log(`Successfully uploaded attachment: ${file.name}`);
+          } catch (error) {
+            console.error(`File upload error for ${file.name}:`, error);
+            // Continue with other files if one fails
+          }
+        }
+      }
+      
+      // Create the invoice data with timestamps
+      const timestamp = new Date().toISOString();
+      const newInvoice = {
+        ...invoiceData,
+        attachments,
+        organizationId: orgId,
+        createdBy: {
+          id: user.uid,
+          name: user.displayName || user.name || user.email
+        },
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        status: 'pending',
+        activity: [
+          {
+            action: 'Invoice created',
+            userId: user.uid,
+            timestamp,
+            note: ''
+          }
+        ]
+      };
+      
+      // Remove any non-serializable values from the invoice object
+      const serializedInvoice = JSON.parse(JSON.stringify(newInvoice));
+      
+      console.log(`Attempting to create invoice in database for organization "${orgId}"`, serializedInvoice);
+      
+      // Save the invoice to Realtime Database
+      const result = await realtimeDb.createInvoice(orgId, serializedInvoice);
+      
+      if (!result.success) {
+        console.error(`Invoice creation failed in database for organization "${orgId}":`, result.error);
+        return rejectWithValue(result.error || 'Failed to create invoice');
+      }
+      
+      console.log(`Invoice created successfully with ID: ${result.data.id}`, result.data);
+      
+      // Add a direct check to verify the invoice was actually created
+      const verifyResult = await realtimeDb.getData(`organizations/${orgId}/invoices/${result.data.id}`);
+      
+      if (!verifyResult.success || !verifyResult.data) {
+        console.error(`Invoice verification failed - Created invoice not found in database`);
+        return rejectWithValue('Invoice creation appeared successful but verification failed');
+      }
+      
+      console.log(`Invoice verification successful - Invoice exists in database`);
+      
+      // Log the activity
+      try {
+        await realtimeDb.logActivity(orgId, {
+          type: 'invoice_created',
+          userId: user.uid,
+          invoiceId: result.data.id,
+          timestamp
+        });
+        console.log(`Activity logged for invoice creation`);
+      } catch (activityError) {
+        console.error('Failed to log activity, but invoice was created:', activityError);
+        // Don't fail the operation if just the activity logging fails
+      }
+      
+      return result.data;
     } catch (error) {
-      return thunkAPI.rejectWithValue(
-        error.response?.data?.message || 'Failed to create invoice'
-      );
+      console.error('Error creating invoice:', error);
+      return rejectWithValue(error.message || 'Failed to create invoice');
     }
   }
 );
@@ -70,14 +277,87 @@ export const createInvoice = createAsyncThunk(
 // Update an existing invoice
 export const updateInvoice = createAsyncThunk(
   'invoices/update',
-  async ({ id, invoiceData }, thunkAPI) => {
+  async ({ id, invoiceData }, { getState, rejectWithValue, dispatch }) => {
     try {
-      const response = await axios.put(`${API_URL}/${id}`, invoiceData);
-      return response.data;
-    } catch (error) {
-      return thunkAPI.rejectWithValue(
-        error.response?.data?.message || 'Failed to update invoice'
+      const { auth } = getState();
+      const { user } = auth;
+      const organizationName = user?.organization;
+      
+      if (!organizationName) {
+        return rejectWithValue('No organization associated with user');
+      }
+      
+      const orgId = organizationName;
+      
+      // Get current invoice to merge with updates
+      const currentInvoiceResult = await realtimeDb.getData(`organizations/${orgId}/invoices/${id}`);
+      
+      if (!currentInvoiceResult.success || !currentInvoiceResult.data) {
+        return rejectWithValue('Invoice not found');
+      }
+      
+      const currentInvoice = currentInvoiceResult.data;
+      
+      // Process new file attachments if any
+      const existingAttachments = currentInvoice.attachments || [];
+      let updatedAttachments = [...existingAttachments];
+      
+      if (invoiceData.attachments && invoiceData.attachments.length > 0) {
+        for (const file of invoiceData.attachments) {
+          try {
+            const fileUrl = await uploadFile(
+              file, 
+              `organizations/${orgId}/invoices/attachments`,
+              (progress) => console.log(`Upload progress: ${progress}%`)
+            );
+            
+            updatedAttachments.push({
+              name: file.name,
+              type: file.type,
+              size: file.size,
+              url: fileUrl,
+              uploadedAt: new Date().toISOString(),
+            });
+          } catch (error) {
+            console.error('File upload error:', error);
+          }
+        }
+      }
+      
+      // Prepare updated invoice data
+      const timestamp = new Date().toISOString();
+      const updatedInvoice = {
+        ...currentInvoice,
+        ...invoiceData,
+        attachments: updatedAttachments,
+        updatedAt: timestamp,
+        updatedBy: user.uid,
+      };
+      
+      // Remove the file objects to avoid circular references
+      delete updatedInvoice.attachmentFiles;
+      
+      // Save to database
+      const result = await realtimeDb.updateData(
+        `organizations/${orgId}/invoices/${id}`, 
+        updatedInvoice
       );
+      
+      if (!result.success) {
+        return rejectWithValue(result.error || 'Failed to update invoice');
+      }
+      
+      // Log activity
+      await dispatch(logInvoiceActivity({
+        invoiceId: id,
+        action: 'updated',
+        details: `Invoice #${updatedInvoice.invoiceNumber} updated`
+      }));
+      
+      return { _id: id, ...updatedInvoice };
+    } catch (error) {
+      console.error(`Error updating invoice ${id}:`, error);
+      return rejectWithValue(error.message || 'Failed to update invoice');
     }
   }
 );
@@ -85,48 +365,194 @@ export const updateInvoice = createAsyncThunk(
 // Update invoice status
 export const updateInvoiceStatus = createAsyncThunk(
   'invoices/updateStatus',
-  async ({ id, statusData }, thunkAPI) => {
+  async ({ invoiceId, status, note }, { getState, rejectWithValue, dispatch }) => {
     try {
-      const response = await axios.put(`${API_URL}/${id}/status`, statusData);
-      return response.data;
-    } catch (error) {
-      return thunkAPI.rejectWithValue(
-        error.response?.data?.message || 'Failed to update invoice status'
+      const { auth } = getState();
+      const { user } = auth;
+      const organizationName = user?.organization;
+      
+      if (!organizationName) {
+        return rejectWithValue('No organization associated with user');
+      }
+      
+      const orgId = organizationName;
+      
+      // Get current invoice
+      const currentInvoiceResult = await realtimeDb.getData(`organizations/${orgId}/invoices/${invoiceId}`);
+      
+      if (!currentInvoiceResult.success || !currentInvoiceResult.data) {
+        return rejectWithValue('Invoice not found');
+      }
+      
+      const currentInvoice = currentInvoiceResult.data;
+      const timestamp = new Date().toISOString();
+      
+      // Prepare status update
+      const statusUpdate = {
+        status: status,
+        statusChangedAt: timestamp,
+        statusChangedBy: user.uid,
+        statusNote: note || '',
+        updatedAt: timestamp
+      };
+      
+      // Save status update
+      const result = await realtimeDb.updateData(
+        `organizations/${orgId}/invoices/${invoiceId}`, 
+        statusUpdate
       );
+      
+      if (!result.success) {
+        return rejectWithValue(result.error || 'Failed to update status');
+      }
+      
+      // Log activity
+      await dispatch(logInvoiceActivity({
+        invoiceId: invoiceId,
+        action: 'status-changed',
+        details: `Invoice #${currentInvoice.invoiceNumber} status changed to ${status}`
+      }));
+      
+      return { 
+        _id: invoiceId, 
+        ...currentInvoice, 
+        ...statusUpdate 
+      };
+    } catch (error) {
+      console.error(`Error updating invoice status ${invoiceId}:`, error);
+      return rejectWithValue(error.message || 'Failed to update invoice status');
     }
   }
 );
 
-// Upload attachment to invoice
-export const uploadInvoiceAttachment = createAsyncThunk(
-  'invoices/uploadAttachment',
-  async ({ id, formData }, thunkAPI) => {
+// Delete an invoice
+export const deleteInvoice = createAsyncThunk(
+  'invoices/delete',
+  async ({ invoiceId, organizationId }, { getState, rejectWithValue, dispatch }) => {
     try {
-      const response = await axios.post(`${API_URL}/${id}/attachments`, formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
+      const { auth } = getState();
+      const { user } = auth;
+      
+      if (!organizationId) {
+        const organizationName = user?.organization;
+        if (!organizationName) {
+          return rejectWithValue('No organization associated with user');
+        }
+        organizationId = organizationName;
+      }
+      
+      // Get invoice details before deletion
+      const invoiceResult = await realtimeDb.getData(`organizations/${organizationId}/invoices/${invoiceId}`);
+      
+      if (!invoiceResult.success || !invoiceResult.data) {
+        return rejectWithValue('Invoice not found');
+      }
+      
+      const invoice = invoiceResult.data;
+      
+      // Delete invoice from database
+      const result = await realtimeDb.deleteData(`organizations/${organizationId}/invoices/${invoiceId}`);
+      
+      if (!result.success) {
+        return rejectWithValue(result.error || 'Failed to delete invoice');
+      }
+      
+      // Log activity
+      await dispatch(logInvoiceActivity({
+        invoiceId,
+        action: 'deleted',
+        details: `Invoice #${invoice.invoiceNumber} deleted`
+      }));
+      
+      return { id: invoiceId };
+    } catch (error) {
+      console.error(`Error deleting invoice ${invoiceId}:`, error);
+      return rejectWithValue(error.message || 'Failed to delete invoice');
+    }
+  }
+);
+
+// Log invoice activity
+export const logInvoiceActivity = createAsyncThunk(
+  'invoices/logActivity',
+  async ({ invoiceId, action, details }, { getState, rejectWithValue }) => {
+    try {
+      const { auth } = getState();
+      const { user } = auth;
+      const organizationName = user?.organization;
+      
+      if (!organizationName) {
+        return rejectWithValue('No organization associated with user');
+      }
+      
+      const orgId = organizationName;
+      
+      // Create activity log entry
+      const activityId = uuidv4();
+      const timestamp = new Date().toISOString();
+      
+      const activityData = {
+        invoiceId,
+        action,
+        details,
+        performedBy: {
+          uid: user.uid,
+          name: user.displayName || user.name || user.email,
         },
-      });
-      return response.data;
-    } catch (error) {
-      return thunkAPI.rejectWithValue(
-        error.response?.data?.message || 'Failed to upload attachment'
+        timestamp
+      };
+      
+      // Save activity log
+      const result = await realtimeDb.setData(
+        `organizations/${orgId}/activity/${activityId}`, 
+        activityData
       );
+      
+      if (!result.success) {
+        console.error('Failed to log activity:', result.error);
+        return rejectWithValue('Failed to log activity');
+      }
+      
+      return activityData;
+    } catch (error) {
+      console.error('Error logging activity:', error);
+      return rejectWithValue(error.message || 'Failed to log activity');
     }
   }
 );
 
-// Get dashboard statistics
-export const getDashboardStats = createAsyncThunk(
-  'invoices/getDashboardStats',
-  async (_, thunkAPI) => {
+// Get organization users (for reviewer assignment)
+export const getOrganizationUsers = createAsyncThunk(
+  'invoices/getOrganizationUsers',
+  async (_, { getState, rejectWithValue }) => {
     try {
-      const response = await axios.get('/api/dashboard/stats');
-      return response.data;
-    } catch (error) {
-      return thunkAPI.rejectWithValue(
-        error.response?.data?.message || 'Failed to fetch dashboard stats'
+      const { auth } = getState();
+      const { user } = auth;
+      const organizationName = user?.organization;
+      
+      if (!organizationName) {
+        return rejectWithValue('No organization associated with user');
+      }
+      
+      // Query users with the same organization name
+      const usersResult = await realtimeDb.queryData(
+        'users', 
+        'organization', 
+        organizationName
       );
+      
+      if (!usersResult.success) {
+        return rejectWithValue(usersResult.error || 'Failed to fetch users');
+      }
+      
+      // Convert to array if not already
+      const users = Array.isArray(usersResult.data) 
+        ? usersResult.data 
+        : Object.values(usersResult.data || {});
+      
+      return users;
+    } catch (error) {
+      return rejectWithValue(error.message || 'Failed to fetch organization users');
     }
   }
 );
@@ -134,152 +560,54 @@ export const getDashboardStats = createAsyncThunk(
 // Get recent activity
 export const getRecentActivity = createAsyncThunk(
   'invoices/getRecentActivity',
-  async (_, thunkAPI) => {
+  async (limit = 20, { getState, rejectWithValue }) => {
     try {
-      const response = await axios.get('/api/dashboard/activity');
-      return response.data;
+      const { auth } = getState();
+      const { user } = auth;
+      const organizationName = user?.organization;
+      
+      if (!organizationName) {
+        return rejectWithValue('No organization associated with user');
+      }
+      
+      const orgId = organizationName;
+      
+      // Get activity logs
+      const activityResult = await realtimeDb.getData(`organizations/${orgId}/activity`);
+      
+      if (!activityResult.success) {
+        return rejectWithValue(activityResult.error || 'Failed to fetch activity');
+      }
+      
+      // Convert to array and sort by timestamp (newest first)
+      let activity = [];
+      if (activityResult.data) {
+        activity = Object.keys(activityResult.data).map(key => ({
+          _id: key,
+          ...activityResult.data[key]
+        }));
+        
+        activity.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+        
+        // Limit results
+        activity = activity.slice(0, limit);
+      }
+      
+      return activity;
     } catch (error) {
-      return thunkAPI.rejectWithValue(
-        error.response?.data?.message || 'Failed to fetch recent activity'
-      );
+      return rejectWithValue(error.message || 'Failed to fetch activity');
     }
   }
 );
 
-// Sample data for development (will be removed when API is ready)
-const sampleInvoices = [
-  {
-    _id: '1',
-    invoiceNumber: 'INV-001',
-    vendorName: 'Acme Corp',
-    vendorAddress: '123 Main St, City, State, 12345',
-    amount: 1500.75,
-    description: 'Monthly services',
-    status: 'pending',
-    dueDate: new Date(2023, 6, 15),
-    createdAt: new Date(2023, 5, 15),
-    items: [
-      { description: 'Service A', quantity: 2, unitPrice: 500.25 },
-      { description: 'Service B', quantity: 1, unitPrice: 500.25 },
-    ],
-  },
-  {
-    _id: '2',
-    invoiceNumber: 'INV-002',
-    vendorName: 'Tech Solutions',
-    vendorAddress: '456 Tech Blvd, Innovation City, State, 67890',
-    amount: 2300.00,
-    description: 'Software licenses',
-    status: 'approved',
-    dueDate: new Date(2023, 6, 20),
-    createdAt: new Date(2023, 5, 20),
-    items: [
-      { description: 'Software License', quantity: 5, unitPrice: 460.00 },
-    ],
-  },
-  {
-    _id: '3',
-    invoiceNumber: 'INV-003',
-    vendorName: 'Global Supplies',
-    vendorAddress: '789 Supply Rd, Warehouse District, State, 54321',
-    amount: 750.50,
-    description: 'Office supplies',
-    status: 'rejected',
-    dueDate: new Date(2023, 6, 25),
-    createdAt: new Date(2023, 5, 25),
-    items: [
-      { description: 'Paper Packs', quantity: 10, unitPrice: 25.50 },
-      { description: 'Ink Cartridges', quantity: 5, unitPrice: 50.00 },
-      { description: 'Stationery Set', quantity: 8, unitPrice: 25.00 },
-    ],
-  },
-  {
-    _id: '4',
-    invoiceNumber: 'INV-004',
-    vendorName: 'Marketing Experts',
-    vendorAddress: '321 Marketing Way, Creative District, State, 98765',
-    amount: 3500.00,
-    description: 'Q2 Marketing Campaign',
-    status: 'paid',
-    dueDate: new Date(2023, 6, 30),
-    createdAt: new Date(2023, 5, 30),
-    items: [
-      { description: 'Social Media Campaign', quantity: 1, unitPrice: 2000.00 },
-      { description: 'Email Newsletter', quantity: 1, unitPrice: 1500.00 },
-    ],
-  },
-];
-
-// Sample dashboard stats for development
-const sampleStats = {
-  counts: {
-    pending: 12,
-    approved: 8,
-    rejected: 3,
-    paid: 25,
-  },
-  amounts: {
-    pending: 24500.75,
-    approved: 18370.25,
-    rejected: 4325.50,
-    paid: 67850.30,
-  },
-  monthly: [
-    { month: 1, year: 2023, count: 12 },
-    { month: 2, year: 2023, count: 15 },
-    { month: 3, year: 2023, count: 10 },
-    { month: 4, year: 2023, count: 18 },
-    { month: 5, year: 2023, count: 22 },
-    { month: 6, year: 2023, count: 16 },
-  ],
-};
-
-// Sample activity for development
-const sampleActivity = [
-  {
-    _id: '1',
-    action: 'created',
-    timestamp: new Date(2023, 5, 30, 10, 15),
-    performedBy: { _id: '101', name: 'John Doe' },
-    invoiceId: {
-      _id: '1',
-      vendorName: 'Acme Corp',
-      amount: 1500.75,
-    },
-  },
-  {
-    _id: '2',
-    action: 'approved',
-    timestamp: new Date(2023, 5, 29, 14, 30),
-    performedBy: { _id: '102', name: 'Jane Smith' },
-    invoiceId: {
-      _id: '2',
-      vendorName: 'Tech Solutions',
-      amount: 2300.00,
-    },
-  },
-  {
-    _id: '3',
-    action: 'rejected',
-    timestamp: new Date(2023, 5, 28, 9, 45),
-    reason: 'Incorrect amount',
-    performedBy: { _id: '102', name: 'Jane Smith' },
-    invoiceId: {
-      _id: '3',
-      vendorName: 'Global Supplies',
-      amount: 750.50,
-    },
-  },
-];
-
 const initialState = {
   invoices: [],
   currentInvoice: null,
+  organizationUsers: [],
   total: 0,
   loading: false,
   error: null,
   success: false,
-  stats: null,
   activity: [],
 };
 
@@ -292,29 +620,9 @@ const invoiceSlice = createSlice({
       state.error = null;
       state.success = false;
     },
-    // In development mode, use sample data
-    mockInvoiceData: (state) => {
-      state.invoices = sampleInvoices;
-      state.total = sampleInvoices.length;
-      state.loading = false;
-      state.error = null;
-    },
-    mockDashboardStats: (state) => {
-      state.stats = sampleStats;
-      state.loading = false;
-      state.error = null;
-    },
-    mockRecentActivity: (state) => {
-      state.activity = sampleActivity;
-      state.loading = false;
-      state.error = null;
-    },
-    setMockCurrentInvoice: (state, action) => {
-      const id = action.payload;
-      state.currentInvoice = sampleInvoices.find(inv => inv._id === id) || null;
-      state.loading = false;
-      state.error = null;
-    },
+    clearCurrentInvoice: (state) => {
+      state.currentInvoice = null;
+    }
   },
   extraReducers: (builder) => {
     builder
@@ -332,9 +640,6 @@ const invoiceSlice = createSlice({
       .addCase(getInvoices.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
-        // For development mode
-        state.invoices = sampleInvoices;
-        state.total = sampleInvoices.length;
       })
       
       // Get invoice by ID
@@ -350,9 +655,6 @@ const invoiceSlice = createSlice({
       .addCase(getInvoiceById.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
-        // For development mode
-        const id = action.meta.arg;
-        state.currentInvoice = sampleInvoices.find(inv => inv._id === id) || null;
       })
       
       // Create invoice
@@ -364,7 +666,8 @@ const invoiceSlice = createSlice({
       .addCase(createInvoice.fulfilled, (state, action) => {
         state.loading = false;
         state.success = true;
-        // Add new invoice to list if available
+        state.currentInvoice = action.payload;
+        // Add to list if available
         if (state.invoices) {
           state.invoices.unshift(action.payload);
           state.total += 1;
@@ -430,37 +733,47 @@ const invoiceSlice = createSlice({
         state.success = false;
       })
       
-      // Upload attachment
-      .addCase(uploadInvoiceAttachment.pending, (state) => {
+      // Delete invoice
+      .addCase(deleteInvoice.pending, (state) => {
         state.loading = true;
         state.error = null;
         state.success = false;
       })
-      .addCase(uploadInvoiceAttachment.fulfilled, (state, action) => {
+      .addCase(deleteInvoice.fulfilled, (state, action) => {
         state.loading = false;
         state.success = true;
-        state.currentInvoice = action.payload;
+        
+        // Remove from list if available
+        if (state.invoices) {
+          state.invoices = state.invoices.filter(
+            (invoice) => invoice._id !== action.payload.id
+          );
+          state.total -= 1;
+        }
+        
+        // Clear current invoice if it's the one that was deleted
+        if (state.currentInvoice && state.currentInvoice._id === action.payload.id) {
+          state.currentInvoice = null;
+        }
       })
-      .addCase(uploadInvoiceAttachment.rejected, (state, action) => {
+      .addCase(deleteInvoice.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
         state.success = false;
       })
       
-      // Get dashboard stats
-      .addCase(getDashboardStats.pending, (state) => {
+      // Get organization users
+      .addCase(getOrganizationUsers.pending, (state) => {
         state.loading = true;
         state.error = null;
       })
-      .addCase(getDashboardStats.fulfilled, (state, action) => {
+      .addCase(getOrganizationUsers.fulfilled, (state, action) => {
         state.loading = false;
-        state.stats = action.payload;
+        state.organizationUsers = action.payload;
       })
-      .addCase(getDashboardStats.rejected, (state, action) => {
+      .addCase(getOrganizationUsers.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
-        // For development mode
-        state.stats = sampleStats;
       })
       
       // Get recent activity
@@ -475,17 +788,9 @@ const invoiceSlice = createSlice({
       .addCase(getRecentActivity.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
-        // For development mode
-        state.activity = sampleActivity;
       });
   },
 });
 
-export const { 
-  resetInvoiceState, 
-  mockInvoiceData, 
-  mockDashboardStats,
-  mockRecentActivity,
-  setMockCurrentInvoice,
-} = invoiceSlice.actions;
+export const { resetInvoiceState, clearCurrentInvoice } = invoiceSlice.actions;
 export default invoiceSlice.reducer; 

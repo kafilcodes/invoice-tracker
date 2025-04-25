@@ -4,53 +4,45 @@ import { Box, Toolbar, CssBaseline } from '@mui/material';
 import { useSelector } from 'react-redux';
 
 // Components
-import Sidebar from '../components/layout/Sidebar';
-import Header from '../components/layout/Header';
-
-const drawerWidth = 240;
+import NavBar from '../components/NavBar';
 
 const MainLayout = () => {
-  const [mobileOpen, setMobileOpen] = useState(false);
-  const { sidebarOpen } = useSelector((state) => state.ui);
-
-  const handleDrawerToggle = () => {
-    setMobileOpen(!mobileOpen);
-  };
-
+  const { darkMode } = useSelector((state) => state.ui);
+  
   return (
-    <Box sx={{ display: 'flex' }}>
+    <Box 
+      sx={{ 
+        display: 'flex',
+        minHeight: '100vh',
+        bgcolor: 'background.default',
+      }}
+    >
       <CssBaseline />
       
-      {/* App bar */}
-      <Header 
-        drawerWidth={drawerWidth} 
-        handleDrawerToggle={handleDrawerToggle}
-        open={sidebarOpen}
-      />
-      
-      {/* Sidebar */}
-      <Sidebar 
-        drawerWidth={drawerWidth} 
-        mobileOpen={mobileOpen} 
-        handleDrawerToggle={handleDrawerToggle}
-        open={sidebarOpen}
-      />
+      {/* Navigation */}
+      <NavBar />
       
       {/* Main content */}
       <Box
         component="main"
         sx={{
           flexGrow: 1,
-          p: 3,
-          width: { sm: `calc(100% - ${sidebarOpen ? drawerWidth : 0}px)` },
-          ml: { sm: `${sidebarOpen ? drawerWidth : 0}px` },
-          transition: (theme) => theme.transitions.create(['margin', 'width'], {
-            easing: theme.transitions.easing.sharp,
-            duration: theme.transitions.duration.leavingScreen,
-          }),
+          p: { xs: 2, md: 3 },
+          width: '100%',
+          '& img': {
+            maxWidth: '100%',
+            height: 'auto'
+          },
+          '& .watermark-logo': {
+            maxWidth: '150px',
+            opacity: 0.1
+          },
+          // Gradient background in dark mode
+          backgroundImage: darkMode ? 
+            'radial-gradient(circle at 10% 10%, rgba(20, 20, 50, 0.2) 0%, rgba(0, 0, 0, 0) 70%)' : 
+            'none',
         }}
       >
-        <Toolbar />
         <Outlet />
       </Box>
     </Box>

@@ -1,101 +1,105 @@
 # Invoice Tracker
 
-A modern, responsive web application for tracking, reviewing, and managing invoices with approval workflows.
+A modern web application for tracking and managing invoices built with React, Firebase, and Material UI.
 
 ## Features
 
-- **Invoice Management**: Create, view, edit, and manage invoices
-- **Status Workflows**: Implement approval processes with pending, approved, rejected, and paid statuses
-- **Dashboard**: Visual analytics and statistics for invoice tracking
-- **User Roles**: Admin and reviewer role-based permissions
-- **Attachments**: Upload and manage invoice attachments
-- **Responsive Design**: Works seamlessly on desktop and mobile devices
-- **Dark Mode**: Toggle between light and dark themes
+- User authentication with Firebase (email/password and Google sign-in)
+- Role-based authorization (admin and reviewer roles)
+- Invoice management (create, view, edit, delete)
+- Invoice approval workflow
+- User management (admin only)
+- Profile management
+- Organization settings
+- Responsive design
 
 ## Technology Stack
 
-- **Frontend**: React, Redux Toolkit, Tailwind CSS, Heroicons
-- **State Management**: Redux with Redux Toolkit
-- **Routing**: React Router v6
-- **Styling**: Tailwind CSS with dark mode support
-- **Form Handling**: React Hook Form with validation
-- **API Integration**: Axios for API requests
+- **Frontend**: React, Redux, Material UI
+- **Backend**: Firebase (Authentication, Realtime Database, Storage)
+- **Build Tool**: Vite
 
 ## Getting Started
 
 ### Prerequisites
 
-- Node.js (v14+)
+- Node.js (v14 or later)
 - npm or yarn
+- Firebase account
 
 ### Installation
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/yourusername/invoice-tracker.git
-   cd invoice-tracker
-   ```
-
-2. Install dependencies:
-   ```bash
-   npm install
-   # or
-   yarn install
-   ```
-
-3. Start the development server:
-   ```bash
-   npm start
-   # or
-   yarn start
-   ```
-
-4. The application will open in your browser at `http://localhost:3000`
-
-## Project Structure
-
-```
-invoice-tracker/
-├── public/                  # Static files
-├── src/
-│   ├── components/          # Reusable UI components
-│   │   ├── common/          # Common UI elements
-│   │   └── layout/          # Layout components
-│   ├── pages/               # Page components
-│   ├── redux/               # Redux state management
-│   │   ├── slices/          # Redux Toolkit slices
-│   │   └── store.js         # Redux store configuration
-│   ├── utils/               # Helper functions
-│   ├── App.js               # Main App component
-│   └── index.js             # Application entry point
-└── tailwind.config.js       # Tailwind CSS configuration
+1. Clone the repository
+```bash
+git clone https://github.com/yourusername/invoice-tracker.git
+cd invoice-tracker
 ```
 
-## Deployment
+2. Install dependencies
+```bash
+npm install
+# or with yarn
+yarn install
+```
 
-This application can be deployed to any static hosting service. Build the production-ready code with:
+3. Set up Firebase environment variables
+   
+Create a `.env.local` file in the root directory with your Firebase configuration. See [ENV_SETUP.md](ENV_SETUP.md) for detailed instructions.
+
+### Running the application
+
+```bash
+npm run dev
+# or with yarn
+yarn dev
+```
+
+This will start the development server at http://localhost:5173
+
+### Testing Auth and Firebase
+
+After setting up your environment variables, you can verify the setup by visiting these test routes:
+
+- `/auth-test` - Test authentication with login/register/logout
+- `/firebase-diagnostic` - Test Firebase connection
+- `/realtime-test` - Test Realtime Database operations
+
+### Setting Up Your First Admin User
+
+By default, all new users are registered with the "reviewer" role. To create an admin user:
+
+1. Register a new user through the `/auth` page
+2. Open your browser console on the `/auth-test` page
+3. Run the following code to list all users:
+```javascript
+import { listUsers } from './scripts/promoteToAdmin';
+listUsers();
+```
+4. Promote your user to admin:
+```javascript
+import { promoteToAdmin } from './scripts/promoteToAdmin';
+promoteToAdmin('your-email@example.com');
+```
+
+### Build for production
 
 ```bash
 npm run build
-# or
+# or with yarn
 yarn build
 ```
 
-## Contributing
+## Usage
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+### Authentication
+
+New users can register with email and password or sign in with Google. All new users are assigned the 'reviewer' role by default.
+
+### Role-Based Access
+
+- **Admin**: Access to all features including user management
+- **Reviewer**: Can view, create, and process invoices
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## Acknowledgments
-
-- [React](https://reactjs.org/)
-- [Redux Toolkit](https://redux-toolkit.js.org/)
-- [Tailwind CSS](https://tailwindcss.com/)
-- [Heroicons](https://heroicons.com/)
+MIT

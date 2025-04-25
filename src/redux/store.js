@@ -1,13 +1,25 @@
 import { configureStore } from '@reduxjs/toolkit';
 import authReducer from './slices/authSlice';
 import invoiceReducer from './slices/invoiceSlice';
+import clientReducer from './slices/clientSlice';
+import companyReducer from './slices/companySlice';
 import uiReducer from './slices/uiSlice';
+import profileReducer from './slices/profileSlice';
+import settingsReducer from './slices/settingsSlice';
+import themeReducer from './slices/themeSlice';
+import usersReducer from './slices/usersSlice';
 
 export const store = configureStore({
   reducer: {
     auth: authReducer,
     invoices: invoiceReducer,
+    settings: settingsReducer,
+    profile: profileReducer,
+    clients: clientReducer,
+    company: companyReducer,
     ui: uiReducer,
+    theme: themeReducer,
+    users: usersReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({

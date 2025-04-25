@@ -46,7 +46,7 @@ const InvoiceList = () => {
   const dispatch = useDispatch();
   const location = useLocation();
   const navigate = useNavigate();
-  const { invoices, total, loading } = useSelector((state) => state.invoices);
+  const { invoices = [], total = 0, loading } = useSelector((state) => state.invoices);
   const { user } = useSelector((state) => state.auth);
 
   // Parse query parameters from URL
@@ -160,18 +160,25 @@ const InvoiceList = () => {
   return (
     <Box>
       <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Typography variant="h4" component="h1">
-          Invoices
-        </Typography>
-        <Button
-          variant="contained"
-          color="primary"
-          startIcon={<Add />}
-          component={RouterLink}
-          to="/invoices/create"
-        >
-          Create Invoice
-        </Button>
+        <Box>
+          <Typography variant="h4" component="h1">
+            Invoices
+          </Typography>
+          <Typography variant="subtitle1" color="text.secondary" sx={{ mt: 0.5 }}>
+            Showing invoices for your organization only. {user?.role === 'reviewer' ? 'You can review any invoice from your organization.' : 'You can manage and track all your invoices here.'}
+          </Typography>
+        </Box>
+        {user?.role !== 'reviewer' && (
+          <Button
+            variant="contained"
+            color="primary"
+            startIcon={<Add />}
+            component={RouterLink}
+            to="/invoices/create"
+          >
+            Create Invoice
+          </Button>
+        )}
       </Box>
 
       <Card sx={{ mb: 3 }}>
@@ -253,86 +260,114 @@ const InvoiceList = () => {
         </CardContent>
       </Card>
 
-      <TableContainer component={Paper}>
-        <Table sx={{ minWidth: 650 }}>
-          <TableHead>
-            <TableRow>
-              <TableCell>
-                <TableSortLabel
-                  active={sort.field === 'invoiceNumber'}
-                  direction={
-                    sort.field === 'invoiceNumber' ? sort.direction : 'asc'
-                  }
-                  onClick={() => handleSortChange('invoiceNumber')}
-                >
-                  Invoice #
-                </TableSortLabel>
-              </TableCell>
-              <TableCell>
-                <TableSortLabel
-                  active={sort.field === 'vendorName'}
-                  direction={
-                    sort.field === 'vendorName' ? sort.direction : 'asc'
-                  }
-                  onClick={() => handleSortChange('vendorName')}
-                >
-                  Vendor
-                </TableSortLabel>
-              </TableCell>
-              <TableCell>
-                <TableSortLabel
-                  active={sort.field === 'amount'}
-                  direction={sort.field === 'amount' ? sort.direction : 'asc'}
-                  onClick={() => handleSortChange('amount')}
-                >
-                  Amount
-                </TableSortLabel>
-              </TableCell>
-              <TableCell>
-                <TableSortLabel
-                  active={sort.field === 'status'}
-                  direction={sort.field === 'status' ? sort.direction : 'asc'}
-                  onClick={() => handleSortChange('status')}
-                >
-                  Status
-                </TableSortLabel>
-              </TableCell>
-              <TableCell>
-                <TableSortLabel
-                  active={sort.field === 'dueDate'}
-                  direction={sort.field === 'dueDate' ? sort.direction : 'asc'}
-                  onClick={() => handleSortChange('dueDate')}
-                >
-                  Due Date
-                </TableSortLabel>
-              </TableCell>
-              <TableCell>
-                <TableSortLabel
-                  active={sort.field === 'createdAt'}
-                  direction={sort.field === 'createdAt' ? sort.direction : 'asc'}
-                  onClick={() => handleSortChange('createdAt')}
-                >
-                  Created
-                </TableSortLabel>
-              </TableCell>
-              <TableCell align="right">Actions</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {loading ? (
+      {/* Invoice Table */}
+      {loading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 5 }}>
+          <CircularProgress />
+        </Box>
+      ) : (!invoices || invoices.length === 0) ? (
+        <Box
+          sx={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            py: 8,
+            px: 2,
+            textAlign: 'center'
+          }}
+        >
+          <Typography variant="h1" sx={{ fontSize: '4rem', mb: 2, color: 'text.secondary' }}>
+            📋
+          </Typography>
+          <Typography variant="h5" gutterBottom fontWeight="medium">
+            No invoices found yet! 😢
+          </Typography>
+          <Typography variant="body1" color="text.secondary" paragraph>
+            {filters.search || filters.status || filters.date ? 
+              "No invoices match your current filters. Try adjusting your search criteria." : 
+              user?.role === 'reviewer' ? 
+                "There are no invoices in your organization to review at the moment." : 
+                "Get started by creating your first invoice!"
+            }
+          </Typography>
+          {user?.role !== 'reviewer' && !filters.search && !filters.status && !filters.date && (
+            <Button
+              variant="contained"
+              color="primary"
+              startIcon={<Add />}
+              component={RouterLink}
+              to="/invoices/create"
+              sx={{ mt: 2 }}
+            >
+              Create Your First Invoice
+            </Button>
+          )}
+        </Box>
+      ) : (
+        <TableContainer component={Paper} sx={{ overflow: 'auto' }}>
+          <Table>
+            <TableHead>
               <TableRow>
-                <TableCell colSpan={7} align="center" sx={{ py: 3 }}>
-                  <CircularProgress />
+                <TableCell>
+                  <TableSortLabel
+                    active={sort.field === 'invoiceNumber'}
+                    direction={sort.field === 'invoiceNumber' ? sort.direction : 'asc'}
+                    onClick={() => handleSortChange('invoiceNumber')}
+                  >
+                    Invoice Number
+                  </TableSortLabel>
                 </TableCell>
-              </TableRow>
-            ) : invoices && invoices.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={7} align="center" sx={{ py: 3 }}>
-                  No invoices found
+                <TableCell>
+                  <TableSortLabel
+                    active={sort.field === 'vendorName'}
+                    direction={sort.field === 'vendorName' ? sort.direction : 'asc'}
+                    onClick={() => handleSortChange('vendorName')}
+                  >
+                    Vendor
+                  </TableSortLabel>
                 </TableCell>
+                <TableCell>
+                  <TableSortLabel
+                    active={sort.field === 'amount'}
+                    direction={sort.field === 'amount' ? sort.direction : 'asc'}
+                    onClick={() => handleSortChange('amount')}
+                  >
+                    Amount
+                  </TableSortLabel>
+                </TableCell>
+                <TableCell>
+                  <TableSortLabel
+                    active={sort.field === 'status'}
+                    direction={sort.field === 'status' ? sort.direction : 'asc'}
+                    onClick={() => handleSortChange('status')}
+                  >
+                    Status
+                  </TableSortLabel>
+                </TableCell>
+                <TableCell>
+                  <TableSortLabel
+                    active={sort.field === 'dueDate'}
+                    direction={sort.field === 'dueDate' ? sort.direction : 'asc'}
+                    onClick={() => handleSortChange('dueDate')}
+                  >
+                    Due Date
+                  </TableSortLabel>
+                </TableCell>
+                <TableCell>
+                  <TableSortLabel
+                    active={sort.field === 'createdAt'}
+                    direction={sort.field === 'createdAt' ? sort.direction : 'asc'}
+                    onClick={() => handleSortChange('createdAt')}
+                  >
+                    Created
+                  </TableSortLabel>
+                </TableCell>
+                <TableCell align="right">Actions</TableCell>
               </TableRow>
-            ) : (
-              invoices && invoices.map((invoice) => {
+            </TableHead>
+            <TableBody>
+              {invoices && invoices.map((invoice) => {
                 const statusInfo = getStatusInfo(invoice.status);
                 return (
                   <TableRow key={invoice._id}>
@@ -381,11 +416,11 @@ const InvoiceList = () => {
                     </TableCell>
                   </TableRow>
                 );
-              })
-            )}
-          </TableBody>
-        </Table>
-      </TableContainer>
+              })}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      )}
 
       {invoices && invoices.length > 0 && (
         <Box sx={{ mt: 3, display: 'flex', justifyContent: 'center' }}>

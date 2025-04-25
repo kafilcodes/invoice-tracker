@@ -110,36 +110,37 @@ export const lightTheme = createTheme({
   ...commonSettings,
 });
 
-// Dark theme
+// Dark theme - AMOLED Black
 export const darkTheme = createTheme({
   palette: {
     mode: 'dark',
     primary: {
-      main: '#5c6bc0',
-      light: '#8e99f3',
-      dark: '#26418f',
+      main: '#7b89f4', // Brighter, more vibrant primary
+      light: '#a4b0ff',
+      dark: '#4f5bac',
       contrastText: '#fff',
     },
     secondary: {
-      main: '#ff4081',
-      light: '#ff79b0',
-      dark: '#c60055',
+      main: '#ff4f9a',
+      light: '#ff8cc7',
+      dark: '#d81b7a',
       contrastText: '#fff',
     },
     background: {
-      default: '#121212',
-      paper: '#1e1e1e',
+      default: '#000000', // AMOLED black
+      paper: '#0a0a0a',   // Nearly black
     },
     text: {
       primary: '#ffffff',
-      secondary: '#b0b0b0',
+      secondary: '#cccccc', // Brighter secondary text for better contrast
     },
     status: {
-      pending: '#ff9800',
-      approved: '#4caf50',
-      rejected: '#f44336',
-      paid: '#2196f3',
+      pending: '#ffa726',
+      approved: '#66bb6a',
+      rejected: '#ef5350',
+      paid: '#42a5f5',
     },
+    divider: 'rgba(255, 255, 255, 0.1)', // More visible divider
   },
   ...commonSettings,
 }); 

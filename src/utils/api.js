@@ -1,58 +1,91 @@
+// This file is no longer needed as we've migrated to Firebase
+// It is kept as a placeholder for reference
+// All API calls should now use the Firebase service files in src/firebase/
+
+// If you need to make external API calls (not to Firebase), 
+// consider creating a new service with fetch or reinstalling axios 
+
 import axios from 'axios';
 
-// Create an instance of axios with default config
+// Create axios instance with default config
 const api = axios.create({
-  baseURL: 'http://localhost:5000/api',
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
   headers: {
     'Content-Type': 'application/json',
-  },
+  }
 });
 
-// Add a request interceptor to attach the auth token
+// Request interceptor to add auth token
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+    const user = JSON.parse(localStorage.getItem('user'));
+    if (user && user.token) {
+      config.headers['Authorization'] = `Bearer ${user.token}`;
     }
     return config;
   },
   (error) => {
+    console.error('API Request Error:', error);
     return Promise.reject(error);
   }
 );
 
-// Add a response interceptor to handle errors globally
+// Response interceptor for error handling
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    // Handle network errors
-    if (!error.response) {
-      console.error('Network Error:', error.message);
-      return Promise.reject({ 
-        message: 'Network error. Please check your internet connection or try again later.' 
-      });
+    console.error('API Response Error:', error.response);
+    
+    // Handle session timeout or unauthorized access
+    if (error.response && error.response.status === 401) {
+      // Clear local storage and redirect to login
+      localStorage.removeItem('user');
+      window.location.href = '/auth';
     }
     
-    // Handle specific status codes
-    switch (error.response.status) {
-      case 401:
-        // Unauthorized - could handle logout here
-        console.log('Authentication error, please login again');
-        // Optional: localStorage.removeItem('token');
-        break;
-      case 404:
-        console.error('API endpoint not found:', error.config.url);
-        break;
-      case 500:
-        console.error('Server error:', error.response.data);
-        break;
-      default:
-        console.error(`HTTP Error ${error.response.status}:`, error.response.data);
-    }
-    
-    return Promise.reject(error.response?.data || error);
+    return Promise.reject(error);
   }
 );
 
-export default api; 
+export default api;
+
+// Helper functions for common operations
+export const fetchData = async (endpoint) => {
+  try {
+    const response = await api.get(endpoint);
+    return response.data;
+  } catch (error) {
+    console.error(`Error fetching from ${endpoint}:`, error);
+    throw error;
+  }
+};
+
+export const postData = async (endpoint, data) => {
+  try {
+    const response = await api.post(endpoint, data);
+    return response.data;
+  } catch (error) {
+    console.error(`Error posting to ${endpoint}:`, error);
+    throw error;
+  }
+};
+
+export const updateData = async (endpoint, data) => {
+  try {
+    const response = await api.put(endpoint, data);
+    return response.data;
+  } catch (error) {
+    console.error(`Error updating at ${endpoint}:`, error);
+    throw error;
+  }
+};
+
+export const deleteData = async (endpoint) => {
+  try {
+    const response = await api.delete(endpoint);
+    return response.data;
+  } catch (error) {
+    console.error(`Error deleting from ${endpoint}:`, error);
+    throw error;
+  }
+}; 

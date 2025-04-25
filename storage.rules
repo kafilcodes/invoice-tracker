@@ -1,0 +1,44 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Allow authenticated users to read and write their own profile pictures
+    match /profiles/{userId}/{allImages=**} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Allow authenticated users to read and write company files if they are members
+    match /companies/{companyId}/{allFiles=**} {
+      allow read: if request.auth != null && 
+        exists(/databases/$(database)/documents/companies/$(companyId)) &&
+        (get(/databases/$(database)/documents/companies/$(companyId)).data.members.hasAny([request.auth.uid]) ||
+         get(/databases/$(database)/documents/companies/$(companyId)).data.ownerId == request.auth.uid);
+      
+      allow write: if request.auth != null && 
+        exists(/databases/$(database)/documents/companies/$(companyId)) &&
+        (get(/databases/$(database)/documents/companies/$(companyId)).data.members.hasAny([request.auth.uid]) ||
+         get(/databases/$(database)/documents/companies/$(companyId)).data.ownerId == request.auth.uid);
+    }
+    
+    // Allow authenticated users to read and write invoice attachments if they are members of the company
+    match /invoices/{invoiceId}/{allFiles=**} {
+      allow read: if request.auth != null && 
+        exists(/databases/$(database)/documents/invoices/$(invoiceId)) &&
+        exists(/databases/$(database)/documents/companies/$(get(/databases/$(database)/documents/invoices/$(invoiceId)).data.companyId)) &&
+        (get(/databases/$(database)/documents/companies/$(get(/databases/$(database)/documents/invoices/$(invoiceId)).data.companyId)).data.members.hasAny([request.auth.uid]) ||
+         get(/databases/$(database)/documents/companies/$(get(/databases/$(database)/documents/invoices/$(invoiceId)).data.companyId)).data.ownerId == request.auth.uid);
+      
+      allow write: if request.auth != null && 
+        exists(/databases/$(database)/documents/invoices/$(invoiceId)) &&
+        exists(/databases/$(database)/documents/companies/$(get(/databases/$(database)/documents/invoices/$(invoiceId)).data.companyId)) &&
+        (get(/databases/$(database)/documents/companies/$(get(/databases/$(database)/documents/invoices/$(invoiceId)).data.companyId)).data.members.hasAny([request.auth.uid]) ||
+         get(/databases/$(database)/documents/companies/$(get(/databases/$(database)/documents/invoices/$(invoiceId)).data.companyId)).data.ownerId == request.auth.uid);
+    }
+    
+    // Default deny
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+} 

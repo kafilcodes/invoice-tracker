@@ -1,196 +1,319 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
-import api from '../../utils/api';
+import authService from '../../firebase/auth.js';
+import { getAuth, onAuthStateChanged } from 'firebase/auth';
+import { app } from '../../firebase/config.js';
 
-// Get user from local storage
-const user = JSON.parse(localStorage.getItem('user')) || null;
-const token = localStorage.getItem('token');
-
-// If token exists, set default auth header
-if (token) {
-  api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-}
-
-// Register user
-export const register = createAsyncThunk(
-  'auth/register',
-  async (userData, thunkAPI) => {
-    try {
-      const response = await api.post('/auth/register', userData);
-      
-      if (response.data) {
-        localStorage.setItem('user', JSON.stringify(response.data.user));
-        localStorage.setItem('token', response.data.token);
-      }
-      return response.data.user;
-    } catch (error) {
-      const message = error.response?.data?.message || 'Registration failed';
-      console.error('Registration error:', error);
-      return thunkAPI.rejectWithValue(message);
-    }
+// Helper to persistently store user data
+const storeUserData = (userData) => {
+  if (userData) {
+    localStorage.setItem('user', JSON.stringify(userData));
+  } else {
+    localStorage.removeItem('user');
   }
-);
-
-// Login user
-export const login = createAsyncThunk(
-  'auth/login',
-  async (userData, thunkAPI) => {
-    try {
-      const response = await api.post('/auth/login', userData);
-      
-      if (response.data) {
-        localStorage.setItem('user', JSON.stringify(response.data.user));
-        localStorage.setItem('token', response.data.token);
-      }
-      return response.data.user;
-    } catch (error) {
-      const message = error.response?.data?.message || 'Invalid credentials';
-      console.error('Login error:', error);
-      return thunkAPI.rejectWithValue(message);
-    }
-  }
-);
-
-// Logout user
-export const logout = createAsyncThunk('auth/logout', async () => {
-  localStorage.removeItem('user');
-  localStorage.removeItem('token');
-  delete api.defaults.headers.common['Authorization'];
-});
-
-// Get current user profile
-export const getCurrentUser = createAsyncThunk(
-  'auth/getProfile',
-  async (_, thunkAPI) => {
-    try {
-      const response = await api.get('/auth/me');
-      return response.data;
-    } catch (error) {
-      const message = error.response?.data?.message || 'Failed to get user profile';
-      return thunkAPI.rejectWithValue(message);
-    }
-  }
-);
-
-// Sample user data for development
-const sampleUser = {
-  _id: '1',
-  name: 'John Doe',
-  email: 'john@example.com',
-  role: 'admin',
 };
+
+// Get user from localStorage
+const storedUser = localStorage.getItem('user') 
+  ? JSON.parse(localStorage.getItem('user')) 
+  : null;
 
 const initialState = {
-  user: user,
-  isAuthenticated: Boolean(user),
-  isLoading: false,
-  isSuccess: false,
-  isError: false,
-  message: '',
+  isAuthenticated: !!storedUser,
+  user: storedUser,
+  status: 'idle', // 'idle' | 'loading' | 'succeeded' | 'failed'
+  error: null
 };
 
+// Add this helper function to properly serialize Firebase user objects
+const serializeUser = (user) => {
+  if (!user) return null;
+  
+  // Extract only serializable properties from the user object
+  const serializedUser = {
+    uid: user.uid,
+    email: user.email,
+    displayName: user.displayName,
+    photoURL: user.photoURL,
+    emailVerified: user.emailVerified,
+    isAnonymous: user.isAnonymous,
+    createdAt: user.metadata?.creationTime,
+    lastLoginAt: user.metadata?.lastSignInTime,
+    // Include any additional user data from Realtime DB
+    role: user.role,
+    organization: user.organization,
+    department: user.department,
+    phone: user.phone
+  };
+  
+  // Filter out undefined values
+  return Object.fromEntries(
+    Object.entries(serializedUser).filter(([_, value]) => value !== undefined)
+  );
+};
+
+// Async thunks for auth operations
+export const register = createAsyncThunk(
+  'auth/register',
+  async ({ name, email, password, organization, role }, { rejectWithValue }) => {
+    // Validate required fields
+    if (!name || !email || !password || !organization || !role) {
+      return rejectWithValue({ message: 'All fields are required' });
+    }
+    
+    const userData = { 
+      name, 
+      role: role || 'reviewer', // Use the role from form, fallback to reviewer if not provided
+      organization: organization || 'Unknown Organization',
+      department: 'General'
+    };
+    const response = await authService.registerWithEmailAndPassword(email, password, userData);
+    if (!response.success) {
+      return rejectWithValue(response.error);
+    }
+    
+    // Serialize the user data to avoid non-serializable values
+    return serializeUser(response.data);
+  }
+);
+
+export const login = createAsyncThunk(
+  'auth/login',
+  async ({ email, password }, { rejectWithValue }) => {
+    const response = await authService.signInWithEmail(email, password);
+    if (!response.success) {
+      return rejectWithValue(response.error);
+    }
+    
+    // Serialize the user data to avoid non-serializable values
+    return serializeUser(response.data);
+  }
+);
+
+export const loginWithGoogle = createAsyncThunk(
+  'auth/loginWithGoogle',
+  async (_, { rejectWithValue }) => {
+    const response = await authService.signInWithGoogle();
+    if (!response.success) {
+      return rejectWithValue(response.error);
+    }
+    
+    // Serialize the user data to avoid non-serializable values
+    return serializeUser(response.data);
+  }
+);
+
+export const logout = createAsyncThunk(
+  'auth/logout',
+  async (_, { rejectWithValue }) => {
+    const response = await authService.signOut();
+    if (!response.success) {
+      return rejectWithValue(response.error);
+    }
+    return null;
+  }
+);
+
+export const updateProfile = createAsyncThunk(
+  'auth/updateProfile',
+  async (userData, { rejectWithValue }) => {
+    const response = await authService.updateProfile(userData);
+    if (!response.success) {
+      return rejectWithValue(response.error);
+    }
+    
+    // Get updated user data
+    const currentUserResponse = await authService.getCurrentUser();
+    if (!currentUserResponse.success) {
+      return rejectWithValue(currentUserResponse.error);
+    }
+    
+    // Serialize the user data to avoid non-serializable values
+    return serializeUser(currentUserResponse.data);
+  }
+);
+
+export const changePassword = createAsyncThunk(
+  'auth/changePassword',
+  async ({ currentPassword, newPassword }, { rejectWithValue }) => {
+    const response = await authService.changePassword(currentPassword, newPassword);
+    if (!response.success) {
+      return rejectWithValue(response.error);
+    }
+    return null;
+  }
+);
+
+export const resetPassword = createAsyncThunk(
+  'auth/resetPassword',
+  async (email, { rejectWithValue }) => {
+    const response = await authService.resetPassword(email);
+    if (!response.success) {
+      return rejectWithValue(response.error);
+    }
+    return null;
+  }
+);
+
+// Auth slice
 const authSlice = createSlice({
   name: 'auth',
   initialState,
   reducers: {
+    // Add any additional synchronous reducers here
+    clearError: (state) => {
+      state.error = null;
+    },
+    // Add setUser for direct auth state updates
+    setUser: (state, action) => {
+      state.user = action.payload;
+      state.isAuthenticated = !!action.payload;
+      storeUserData(action.payload);
+    },
+    // Add reset action for clearing state
     reset: (state) => {
-      state.isLoading = false;
-      state.isSuccess = false;
-      state.isError = false;
-      state.message = '';
-    },
-    // For development, bypass actual auth
-    mockLogin: (state) => {
-      state.user = sampleUser;
-      state.isAuthenticated = true;
-      state.isLoading = false;
-      state.isSuccess = true;
-      state.isError = false;
-      localStorage.setItem('user', JSON.stringify(sampleUser));
-      localStorage.setItem('token', 'mock-token');
-    },
+      state.status = 'idle';
+      state.error = null;
+      // Don't reset user data here to avoid auth state flicker
+    }
   },
   extraReducers: (builder) => {
     builder
       // Register
       .addCase(register.pending, (state) => {
-        state.isLoading = true;
-        state.isError = false;
-        state.message = '';
+        state.status = 'loading';
+        state.error = null;
       })
       .addCase(register.fulfilled, (state, action) => {
-        state.isLoading = false;
-        state.isSuccess = true;
+        state.status = 'succeeded';
         state.isAuthenticated = true;
         state.user = action.payload;
+        storeUserData(action.payload);
       })
       .addCase(register.rejected, (state, action) => {
-        state.isLoading = false;
-        state.isError = true;
-        state.message = action.payload;
-        state.user = null;
-        state.isAuthenticated = false;
-        // Development fallback
-        if (process.env.NODE_ENV === 'development' && !api.defaults.baseURL.includes('localhost')) {
-          state.user = sampleUser;
-          state.isAuthenticated = true;
-          state.isSuccess = true;
-          state.isError = false;
-          localStorage.setItem('user', JSON.stringify(sampleUser));
-          localStorage.setItem('token', 'mock-token');
-        }
+        state.status = 'failed';
+        state.error = action.payload || { message: 'Registration failed' };
       })
+      
       // Login
       .addCase(login.pending, (state) => {
-        state.isLoading = true;
-        state.isError = false;
-        state.message = '';
+        state.status = 'loading';
+        state.error = null;
       })
       .addCase(login.fulfilled, (state, action) => {
-        state.isLoading = false;
-        state.isSuccess = true;
+        state.status = 'succeeded';
         state.isAuthenticated = true;
         state.user = action.payload;
+        storeUserData(action.payload);
       })
       .addCase(login.rejected, (state, action) => {
-        state.isLoading = false;
-        state.isError = true;
-        state.message = action.payload;
-        state.user = null;
-        state.isAuthenticated = false;
-        // Development fallback
-        if (process.env.NODE_ENV === 'development' && !api.defaults.baseURL.includes('localhost')) {
-          state.user = sampleUser;
-          state.isAuthenticated = true;
-          state.isSuccess = true;
-          state.isError = false;
-          localStorage.setItem('user', JSON.stringify(sampleUser));
-          localStorage.setItem('token', 'mock-token');
-        }
+        state.status = 'failed';
+        state.error = action.payload || { message: 'Login failed' };
       })
-      // Logout
-      .addCase(logout.fulfilled, (state) => {
-        state.user = null;
-        state.isAuthenticated = false;
-        state.isSuccess = false;
+      
+      // Google Login
+      .addCase(loginWithGoogle.pending, (state) => {
+        state.status = 'loading';
+        state.error = null;
       })
-      // Get current user
-      .addCase(getCurrentUser.pending, (state) => {
-        state.isLoading = true;
-      })
-      .addCase(getCurrentUser.fulfilled, (state, action) => {
-        state.isLoading = false;
-        state.isSuccess = true;
-        state.user = action.payload;
+      .addCase(loginWithGoogle.fulfilled, (state, action) => {
+        state.status = 'succeeded';
         state.isAuthenticated = true;
+        state.user = action.payload;
+        storeUserData(action.payload);
       })
-      .addCase(getCurrentUser.rejected, (state, action) => {
-        state.isLoading = false;
-        state.isError = true;
-        state.message = action.payload;
-        // Development fallback - don't clear user here, might be just network related
+      .addCase(loginWithGoogle.rejected, (state, action) => {
+        state.status = 'failed';
+        state.error = action.payload || { message: 'Google login failed' };
+      })
+      
+      // Logout
+      .addCase(logout.pending, (state) => {
+        state.status = 'loading';
+      })
+      .addCase(logout.fulfilled, (state) => {
+        state.status = 'idle';
+        state.isAuthenticated = false;
+        state.user = null;
+        storeUserData(null);
+      })
+      .addCase(logout.rejected, (state, action) => {
+        state.status = 'failed';
+        state.error = action.payload || { message: 'Logout failed' };
+      })
+      
+      // Update Profile
+      .addCase(updateProfile.pending, (state) => {
+        state.status = 'loading';
+        state.error = null;
+      })
+      .addCase(updateProfile.fulfilled, (state, action) => {
+        state.status = 'succeeded';
+        state.user = action.payload;
+        storeUserData(action.payload);
+      })
+      .addCase(updateProfile.rejected, (state, action) => {
+        state.status = 'failed';
+        state.error = action.payload || { message: 'Profile update failed' };
+      })
+      
+      // Change Password
+      .addCase(changePassword.pending, (state) => {
+        state.status = 'loading';
+        state.error = null;
+      })
+      .addCase(changePassword.fulfilled, (state) => {
+        state.status = 'succeeded';
+      })
+      .addCase(changePassword.rejected, (state, action) => {
+        state.status = 'failed';
+        state.error = action.payload || { message: 'Password change failed' };
+      })
+      
+      // Reset Password
+      .addCase(resetPassword.pending, (state) => {
+        state.status = 'loading';
+        state.error = null;
+      })
+      .addCase(resetPassword.fulfilled, (state) => {
+        state.status = 'succeeded';
+      })
+      .addCase(resetPassword.rejected, (state, action) => {
+        state.status = 'failed';
+        state.error = action.payload || { message: 'Password reset failed' };
       });
-  },
+  }
 });
 
-export const { reset, mockLogin } = authSlice.actions;
+// Setup Firebase Auth state listener
+export const setupAuthListener = (store) => {
+  const auth = getAuth(app);
+  return onAuthStateChanged(auth, async (user) => {
+    if (user) {
+      // User is signed in
+      const userResponse = await authService.getCurrentUser();
+      if (userResponse.success) {
+        store.dispatch(setUser(userResponse.data));
+      } else {
+        // Fallback to basic user info if Firestore fetch fails
+        store.dispatch(setUser({
+          uid: user.uid,
+          email: user.email,
+          displayName: user.displayName,
+          photoURL: user.photoURL
+        }));
+      }
+    } else {
+      // User is signed out
+      store.dispatch(setUser(null));
+    }
+  });
+};
+
+// Selectors
+export const selectUser = (state) => state.auth.user;
+export const selectIsAuthenticated = (state) => state.auth.isAuthenticated;
+export const selectAuthStatus = (state) => state.auth.status;
+export const selectAuthError = (state) => state.auth.error;
+
+export const { clearError, setUser, reset } = authSlice.actions;
 export default authSlice.reducer; 

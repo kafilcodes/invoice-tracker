@@ -6,6 +6,28 @@
   body {
     @apply font-sans antialiased;
   }
+  
+  /* Fix for oversized logos/backgrounds */
+  .MuiBox-root {
+    position: relative;
+  }
+  
+  .MuiBox-root::before {
+    content: none !important;
+  }
+  
+  img {
+    max-width: 100%;
+    height: auto;
+  }
+  
+  /* Background logo size constraints */
+  .logo-background,
+  [class*="logo-background"] {
+    max-width: 150px !important;
+    max-height: 150px !important;
+    opacity: 0.1;
+  }
 }
 
 @layer components {

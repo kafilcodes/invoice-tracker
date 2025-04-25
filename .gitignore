@@ -52,6 +52,7 @@ cursor_settings/
 /design/
 **/*-notes.md
 **/*-TODO.md
+/for me/
 
 # Backend sensitive data
 server/config/keys.js
