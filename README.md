@@ -78,10 +78,10 @@ The application implements a sophisticated role-based authorization system that 
 
 <div align="center">
   <!-- Dashboard Screenshot -->
-  <img src="/a dashbaord.png" alt="Dashboard" width="80%" />
+  <img src="img/a dashbaord.png" alt="Dashboard" width="80%" />
   
   <!-- Invoice List Screenshot -->
-  <img src="img/a invoices.png"alt="Invoices List" width="80%" />
+  <img src="img/a invoices.png" alt="Invoices List" width="80%" />
   
   <!-- Invoice Detail Screenshot -->
   <img src="img/a create.png" alt="Create Invoice" width="80%" />
