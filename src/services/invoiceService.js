@@ -1,4 +1,4 @@
-import realtimeDb from '../firebase/realtimeDatabase';
+import invoiceRealtimeService from './InvoiceRealtimeService';
 import { uploadMultipleFiles, deleteFile } from '../utils/fileUpload';
 
 /**
@@ -49,7 +49,7 @@ export const createInvoice = async (invoiceData, orgId, userId, files = []) => {
     }
 
     // Create the invoice in Realtime Database
-    const result = await realtimeDb.createInvoice(orgId, invoiceObj);
+    const result = await invoiceRealtimeService.createInvoice(orgId, invoiceObj);
     
     if (!result.success) {
       console.error(`Failed to create invoice in RTDB:`, result.error);
@@ -59,7 +59,7 @@ export const createInvoice = async (invoiceData, orgId, userId, files = []) => {
     console.log(`Invoice created successfully with ID: ${result.data.id}`);
     
     // Log activity
-    await realtimeDb.logActivity(orgId, {
+    await invoiceRealtimeService.logActivity(orgId, {
       type: 'invoice_created',
       userId,
       invoiceId: result.data.id,
@@ -86,7 +86,7 @@ export const createInvoice = async (invoiceData, orgId, userId, files = []) => {
 export const getInvoiceById = async (invoiceId, orgId) => {
   try {
     console.log(`Getting invoice ${invoiceId} from organization ${orgId}`);
-    const result = await realtimeDb.getInvoice(orgId, invoiceId);
+    const result = await invoiceRealtimeService.getInvoice(orgId, invoiceId);
     
     if (!result.success || !result.data) {
       throw new Error('Invoice not found');
@@ -108,7 +108,7 @@ export const getInvoiceById = async (invoiceId, orgId) => {
 export const getOrganizationInvoices = async (orgId, options = {}) => {
   try {
     console.log(`Getting invoices for organization ${orgId}`, options);
-    const result = await realtimeDb.getOrganizationInvoices(orgId);
+    const result = await invoiceRealtimeService.getOrganizationInvoices(orgId);
     
     if (!result.success) {
       throw new Error(result.error || 'Failed to fetch invoices');
@@ -173,7 +173,7 @@ export const updateInvoice = async (invoiceId, orgId, updateData, userId, newFil
     console.log(`Updating invoice ${invoiceId} for organization ${orgId}`);
     
     // Get current invoice
-    const currentResult = await realtimeDb.getInvoice(orgId, invoiceId);
+    const currentResult = await invoiceRealtimeService.getInvoice(orgId, invoiceId);
     
     if (!currentResult.success || !currentResult.data) {
       throw new Error('Invoice not found');
@@ -214,14 +214,14 @@ export const updateInvoice = async (invoiceId, orgId, updateData, userId, newFil
     };
     
     // Update in RTDB
-    const result = await realtimeDb.updateInvoice(orgId, invoiceId, updates);
+    const result = await invoiceRealtimeService.updateInvoice(orgId, invoiceId, updates);
     
     if (!result.success) {
       throw new Error(result.error || 'Failed to update invoice');
     }
     
     // Log activity
-    await realtimeDb.logActivity(orgId, {
+    await invoiceRealtimeService.logActivity(orgId, {
       type: 'invoice_updated',
       userId,
       invoiceId,
@@ -250,7 +250,7 @@ export const updateInvoiceStatus = async (invoiceId, orgId, newStatus, userId, c
     console.log(`Updating invoice ${invoiceId} status to ${newStatus}`);
     
     // Get current invoice
-    const currentResult = await realtimeDb.getInvoice(orgId, invoiceId);
+    const currentResult = await invoiceRealtimeService.getInvoice(orgId, invoiceId);
     
     if (!currentResult.success || !currentResult.data) {
       throw new Error('Invoice not found');
@@ -270,14 +270,14 @@ export const updateInvoiceStatus = async (invoiceId, orgId, newStatus, userId, c
     };
     
     // Update in RTDB
-    const result = await realtimeDb.updateInvoice(orgId, invoiceId, updates);
+    const result = await invoiceRealtimeService.updateInvoice(orgId, invoiceId, updates);
     
     if (!result.success) {
       throw new Error(result.error || 'Failed to update invoice status');
     }
     
     // Log activity
-    await realtimeDb.logActivity(orgId, {
+    await invoiceRealtimeService.logActivity(orgId, {
       type: 'invoice_status_changed',
       userId,
       invoiceId,
@@ -308,7 +308,7 @@ export const deleteInvoice = async (invoiceId, orgId, userId) => {
     console.log(`Deleting invoice ${invoiceId} from organization ${orgId}`);
     
     // Get invoice details before deletion
-    const invoiceResult = await realtimeDb.getInvoice(orgId, invoiceId);
+    const invoiceResult = await invoiceRealtimeService.getInvoice(orgId, invoiceId);
     
     if (!invoiceResult.success || !invoiceResult.data) {
       throw new Error('Invoice not found');
@@ -332,14 +332,14 @@ export const deleteInvoice = async (invoiceId, orgId, userId) => {
     }
     
     // Delete invoice from RTDB
-    const result = await realtimeDb.deleteInvoice(orgId, invoiceId);
+    const result = await invoiceRealtimeService.deleteInvoice(orgId, invoiceId);
     
     if (!result.success) {
       throw new Error(result.error || 'Failed to delete invoice');
     }
     
     // Log activity
-    await realtimeDb.logActivity(orgId, {
+    await invoiceRealtimeService.logActivity(orgId, {
       type: 'invoice_deleted',
       userId,
       invoiceId,
@@ -370,7 +370,7 @@ export const deleteInvoiceAttachment = async (invoiceId, orgId, attachmentPath, 
     console.log(`Deleting attachment from invoice ${invoiceId}`);
     
     // Get current invoice
-    const currentResult = await realtimeDb.getInvoice(orgId, invoiceId);
+    const currentResult = await invoiceRealtimeService.getInvoice(orgId, invoiceId);
     
     if (!currentResult.success || !currentResult.data) {
       throw new Error('Invoice not found');
@@ -408,14 +408,14 @@ export const deleteInvoiceAttachment = async (invoiceId, orgId, attachmentPath, 
       updatedBy: userId
     };
     
-    const result = await realtimeDb.updateInvoice(orgId, invoiceId, updates);
+    const result = await invoiceRealtimeService.updateInvoice(orgId, invoiceId, updates);
     
     if (!result.success) {
       throw new Error(result.error || 'Failed to update invoice attachments');
     }
     
     // Log activity
-    await realtimeDb.logActivity(orgId, {
+    await invoiceRealtimeService.logActivity(orgId, {
       type: 'invoice_attachment_deleted',
       userId,
       invoiceId,

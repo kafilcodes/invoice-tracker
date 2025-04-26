@@ -3,6 +3,45 @@
     ".read": false,
     ".write": false,
     
+    "users": {
+      "$uid": {
+        ".read": "$uid === auth.uid || root.child('organizations').child(data.child('organization').val()).child('adminIds').child(auth.uid).exists()",
+        ".write": "$uid === auth.uid"
+      }
+    },
+    
+    "organizations": {
+      "$orgId": {
+        ".read": "root.child('users').child(auth.uid).child('organization').val() === $orgId || root.child('organizations').child($orgId).child('adminIds').child(auth.uid).exists() || root.child('organizations').child($orgId).child('members').child(auth.uid).exists()",
+        ".write": "root.child('organizations').child($orgId).child('adminIds').child(auth.uid).exists()",
+        
+        "adminIds": {
+          ".read": "root.child('users').child(auth.uid).child('organization').val() === $orgId || root.child('organizations').child($orgId).child('adminIds').child(auth.uid).exists()",
+          ".write": "root.child('organizations').child($orgId).child('adminIds').child(auth.uid).exists()"
+        },
+        
+        "members": {
+          ".read": "root.child('users').child(auth.uid).child('organization').val() === $orgId || root.child('organizations').child($orgId).child('adminIds').child(auth.uid).exists()",
+          ".write": "root.child('organizations').child($orgId).child('adminIds').child(auth.uid).exists()"
+        },
+        
+        "invoices": {
+          ".read": "root.child('users').child(auth.uid).child('organization').val() === $orgId || root.child('organizations').child($orgId).child('adminIds').child(auth.uid).exists() || root.child('organizations').child($orgId).child('members').child(auth.uid).exists()",
+          ".write": "root.child('users').child(auth.uid).child('organization').val() === $orgId || root.child('organizations').child($orgId).child('adminIds').child(auth.uid).exists()",
+          
+          "$invoiceId": {
+            ".read": "root.child('users').child(auth.uid).child('organization').val() === $orgId || root.child('organizations').child($orgId).child('adminIds').child(auth.uid).exists() || root.child('organizations').child($orgId).child('members').child(auth.uid).exists()",
+            ".write": "root.child('users').child(auth.uid).child('organization').val() === $orgId || root.child('organizations').child($orgId).child('adminIds').child(auth.uid).exists()"
+          }
+        },
+        
+        "activity_logs": {
+          ".read": "root.child('users').child(auth.uid).child('organization').val() === $orgId || root.child('organizations').child($orgId).child('adminIds').child(auth.uid).exists() || root.child('organizations').child($orgId).child('members').child(auth.uid).exists()",
+          ".write": "root.child('users').child(auth.uid).child('organization').val() === $orgId || root.child('organizations').child($orgId).child('adminIds').child(auth.uid).exists() || root.child('organizations').child($orgId).child('members').child(auth.uid).exists()"
+        }
+      }
+    },
+    
     "activityLogs": {
       ".indexOn": ["companyId", "timestamp"],
       "$logId": {

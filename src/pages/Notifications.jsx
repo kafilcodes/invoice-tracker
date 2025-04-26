@@ -28,7 +28,7 @@ import {
   MarkEmailRead as MarkReadIcon,
   NotificationsOff as NotificationsOffIcon
 } from '@mui/icons-material';
-import realtimeDb from '../firebase/realtimeDatabase';
+import realtimeDb from '../firebase/realtimeDb';
 import { motion } from 'framer-motion';
 
 const NotificationsPage = () => {

@@ -1,6 +1,6 @@
 import { rtdb, auth, storage, app } from './config';
 import authService from './auth';
-import realtimeDb from './realtimeDatabase';
+import realtimeDB from './realtimeDb';
 
 // Export everything from a central location
 export {
@@ -9,7 +9,7 @@ export {
   storage,
   app,
   authService,
-  realtimeDb
+  realtimeDB
 };
 
 // Re-export auth service functions for backward compatibility
@@ -43,6 +43,6 @@ export default {
   rtdb,
   storage,
   authService,
-  realtimeDb,
+  realtimeDB,
   initFirebase
 }; 

@@ -1,8 +1,5 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
-import { ClientService } from '../../services/ClientService';
-
-// Create instance of client service
-const clientService = new ClientService();
+import clientService from '../../services/ClientService';
 
 // Initial state
 const initialState = {

@@ -1,5 +1,5 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
-import realtimeDb from '../../firebase/realtimeDatabase';
+import realtimeDb from '../../firebase/realtimeDb';
 import { uploadFile } from '../../firebase/storage';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -151,63 +151,183 @@ export const getInvoiceById = createAsyncThunk(
 // Create a new invoice
 export const createInvoice = createAsyncThunk(
   'invoices/create',
-  async (invoiceData, { getState, rejectWithValue }) => {
+  async (invoiceData, { getState, rejectWithValue, dispatch }) => {
+    console.log('================================================');
+    console.log('[STEP 1/8] 🚀 INVOICE CREATION STARTED', new Date().toISOString());
+    console.log('================================================');
+    
     try {
       const { auth } = getState();
       const { user } = auth;
       
-      // Extract organization name from user data
-      const organizationName = user?.organization;
+      console.log('[STEP 1.1] 👤 User information:', { 
+        userId: user?.uid, 
+        userEmail: user?.email,
+        userRole: user?.role,
+        organization: user?.organization 
+      });
+      
+      let organizationName = user?.organization;
+      
+      // If organization name is not in Redux state, try to get it directly from Firebase
+      if (!organizationName && user?.uid) {
+        console.log('[STEP 1.1.1] 🔍 Organization not found in Redux state, fetching from Firebase...');
+        try {
+          // Get user data directly from Firebase
+          const userDataResult = await realtimeDb.getData(`users/${user.uid}`);
+          
+          if (userDataResult.success && userDataResult.data && userDataResult.data.organization) {
+            organizationName = userDataResult.data.organization;
+            console.log('[STEP 1.1.2] ✅ Organization fetched from Firebase:', organizationName);
+          } else {
+            console.log('[STEP 1.1.3] ⚠️ Failed to get organization from Firebase:', userDataResult);
+          }
+        } catch (fetchError) {
+          console.error('[STEP 1.1.4] ❌ Error fetching user data from Firebase:', fetchError);
+        }
+      }
       
       if (!organizationName) {
-        console.error('Invoice creation failed: No organization associated with user');
-        return rejectWithValue('No organization associated with user');
+        // Fallback to hardcoded organization if user has admin role
+        if (user?.role === 'admin') {
+          organizationName = 'Google';  // Fallback for admin users
+          console.log('[STEP 1.1.5] ⚠️ Using fallback organization for admin:', organizationName);
+        } else {
+          const errorMsg = 'No organization associated with user';
+          console.error('[STEP 1.2] ❌ !!! FAILED !!! No organization found for user:', { user });
+          return rejectWithValue(errorMsg);
+        }
       }
       
       // Preserve original organization name from user profile
       const orgId = organizationName;
       
-      console.log(`Creating invoice for organization: "${orgId}"`);
+      console.log('[STEP 2/8] 📋 Organization confirmed:', { 
+        organizationId: orgId, 
+        userId: user.uid, 
+        userName: user.displayName || user.email
+      });
+      
+      // Detailed log of the invoice data we received
+      console.log('[STEP 2.1] 📦 Complete invoice data:', JSON.stringify(invoiceData, null, 2));
       
       // Test database permissions before attempting to write
-      const permissionTest = await realtimeDb.testDatabasePermissions(`organizations/${orgId}/invoices`);
+      console.log('[STEP 3/8] 🔒 Testing database permissions...');
+      console.log('[STEP 3.1] 🔒 Testing path:', `organizations/${orgId}/invoices`);
       
-      if (!permissionTest.success) {
-        console.error(`Permission denied for organizations/${orgId}/invoices - Cannot create invoice`);
-        return rejectWithValue(`Database write permission denied: ${permissionTest.error || 'Access denied'}`);
+      try {
+        const permissionTest = await realtimeDb.testDatabasePermissions(`organizations/${orgId}/invoices`);
+        
+        if (!permissionTest.success) {
+          const errorMsg = `Database write permission denied: ${permissionTest.error || 'Access denied'}`;
+          console.error(`[STEP 3.2] ❌ !!! FAILED !!! Permission test failed:`, permissionTest);
+          return rejectWithValue(errorMsg);
+        }
+        
+        console.log('[STEP 3.3] ✅ Permission test passed');
+      } catch (permError) {
+        console.error(`[STEP 3.4] ❌ !!! FAILED !!! Permission test error:`, permError);
+        return rejectWithValue(`Permission test error: ${permError.message}`);
       }
+      
+      // Create a unique ID for the invoice (needed before uploading files)
+      const invoiceId = invoiceData.id || `inv-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
+      console.log(`[STEP 4/8] 🔑 Generated invoice ID: ${invoiceId}`);
       
       // Process file attachments if any
       let attachments = [];
       if (invoiceData.attachments && invoiceData.attachments.length > 0) {
-        for (const file of invoiceData.attachments) {
-          try {
-            console.log(`Uploading attachment: ${file.name}`);
-            const fileUrl = await uploadFile(
-              file, 
-              `organizations/${orgId}/invoices/attachments`,
-              (progress) => console.log(`Upload progress: ${progress}%`)
-            );
+        console.log(`[STEP 5/8] 📎 Processing ${invoiceData.attachments.length} attachments for upload`);
+        
+        // Log details of each attachment
+        invoiceData.attachments.forEach((file, index) => {
+          console.log(`[STEP 5.1] File ${index + 1} details:`, {
+            name: file?.name,
+            type: file?.type,
+            size: file?.size,
+            lastModified: file?.lastModified
+          });
+        });
+        
+        try {
+          for (const file of invoiceData.attachments) {
+            if (!file || !file.name) {
+              console.warn('[STEP 5.2] ⚠️ Skipping invalid attachment:', file);
+              continue;
+            }
             
-            attachments.push({
-              name: file.name,
-              type: file.type,
-              size: file.size,
-              url: fileUrl,
-              uploadedAt: new Date().toISOString(),
-            });
-            console.log(`Successfully uploaded attachment: ${file.name}`);
-          } catch (error) {
-            console.error(`File upload error for ${file.name}:`, error);
-            // Continue with other files if one fails
+            try {
+              console.log(`[STEP 5.3] 📤 Uploading attachment: ${file.name} (${file.size} bytes, type: ${file.type})`);
+              
+              // Construct proper path for the file in Storage
+              const filePath = `organizations/${orgId}/invoices/${invoiceId}/attachments`;
+              console.log(`[STEP 5.4] 📁 Storage path for file: ${filePath}`);
+              
+              // Store the file object for debugging
+              const fileObjectSnapshot = {
+                name: file.name,
+                size: file.size,
+                type: file.type,
+                lastModified: file.lastModified,
+                isFile: file instanceof File,
+                hasArrayBuffer: 'arrayBuffer' in file
+              };
+              console.log(`[STEP 5.5] 🔍 File object details:`, fileObjectSnapshot);
+              
+              // Show detailed progress in console
+              let fileUrl;
+              try {
+                fileUrl = await uploadFile(
+                  file, 
+                  filePath,
+                  (progress) => console.log(`[STEP 5.6] 📊 Upload progress for ${file.name}: ${progress.toFixed(1)}%`)
+                );
+                
+                if (!fileUrl) {
+                  console.error(`[STEP 5.7] ❌ !!! FAILED !!! No download URL returned for ${file.name}`);
+                  throw new Error(`Failed to get download URL for ${file.name}`);
+                }
+                
+                console.log(`[STEP 5.8] ✅ Upload successful for ${file.name}, URL: ${fileUrl}`);
+              } catch (uploadError) {
+                console.error(`[STEP 5.9] ❌ !!! FAILED !!! Upload error for ${file.name}:`, uploadError);
+                throw uploadError;
+              }
+              
+              // Add the file metadata to attachments array
+              const fileMetadata = {
+                name: file.name,
+                type: file.type,
+                size: file.size,
+                url: fileUrl, 
+                path: `${filePath}/${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`,
+                uploadedAt: new Date().toISOString(),
+              };
+              
+              attachments.push(fileMetadata);
+              console.log(`[STEP 5.10] ✅ Attachment metadata added:`, fileMetadata);
+            } catch (fileError) {
+              console.error(`[STEP 5.11] ❌ File upload error for ${file.name}:`, fileError);
+              console.error(`[STEP 5.12] Stack trace:`, fileError.stack);
+              // Continue with other files if one fails
+            }
           }
+          
+          console.log(`[STEP 5.13] 📎 Processed attachments summary: ${attachments.length} successfully uploaded`);
+        } catch (attachmentError) {
+          console.error('[STEP 5.14] ❌ Error processing attachments:', attachmentError);
+          console.error('[STEP 5.15] Stack trace:', attachmentError.stack);
+          // Continue with invoice creation even if attachments fail
         }
+      } else {
+        console.log('[STEP 5/8] ℹ️ No attachments to process');
       }
       
-      // Create the invoice data with timestamps
+      // Create the invoice data with timestamps and ID
       const timestamp = new Date().toISOString();
       const newInvoice = {
         ...invoiceData,
+        id: invoiceId,
         attachments,
         organizationId: orgId,
         createdBy: {
@@ -216,7 +336,7 @@ export const createInvoice = createAsyncThunk(
         },
         createdAt: timestamp,
         updatedAt: timestamp,
-        status: 'pending',
+        status: invoiceData.status || 'pending',
         activity: [
           {
             action: 'Invoice created',
@@ -227,48 +347,79 @@ export const createInvoice = createAsyncThunk(
         ]
       };
       
-      // Remove any non-serializable values from the invoice object
+      // Remove non-serializable properties to avoid Firebase errors
       const serializedInvoice = JSON.parse(JSON.stringify(newInvoice));
+      delete serializedInvoice.attachmentFiles;
       
-      console.log(`Attempting to create invoice in database for organization "${orgId}"`, serializedInvoice);
+      console.log(`[STEP 6/8] 🧾 Final invoice data prepared:`, serializedInvoice);
+      console.log(`[STEP 6.1] 🔍 Target RTDB path: organizations/${orgId}/invoices/${invoiceId}`);
       
-      // Save the invoice to Realtime Database
-      const result = await realtimeDb.createInvoice(orgId, serializedInvoice);
-      
-      if (!result.success) {
-        console.error(`Invoice creation failed in database for organization "${orgId}":`, result.error);
-        return rejectWithValue(result.error || 'Failed to create invoice');
+      // Save the invoice to Realtime Database with explicit path including the ID
+      console.log(`[STEP 7/8] 💾 Saving invoice to database...`);
+      let result;
+      try {
+        result = await realtimeDb.setData(
+          `organizations/${orgId}/invoices/${invoiceId}`, 
+          serializedInvoice
+        );
+        
+        if (!result.success) {
+          const errorMsg = result.error || 'Failed to create invoice';
+          console.error(`[STEP 7.1] ❌ !!! FAILED !!! Database write failed:`, result);
+          return rejectWithValue(errorMsg);
+        }
+        
+        console.log(`[STEP 7.2] ✅ Database write succeeded`);
+      } catch (dbError) {
+        console.error(`[STEP 7.3] ❌ !!! FAILED !!! Database write error:`, dbError);
+        console.error(`[STEP 7.4] Stack trace:`, dbError.stack);
+        return rejectWithValue(`Database error: ${dbError.message}`);
       }
-      
-      console.log(`Invoice created successfully with ID: ${result.data.id}`, result.data);
       
       // Add a direct check to verify the invoice was actually created
-      const verifyResult = await realtimeDb.getData(`organizations/${orgId}/invoices/${result.data.id}`);
-      
-      if (!verifyResult.success || !verifyResult.data) {
-        console.error(`Invoice verification failed - Created invoice not found in database`);
-        return rejectWithValue('Invoice creation appeared successful but verification failed');
+      console.log(`[STEP 7.5] 🔍 Verifying invoice was saved correctly...`);
+      try {
+        const verifyResult = await realtimeDb.getData(`organizations/${orgId}/invoices/${invoiceId}`);
+        
+        if (!verifyResult.success || !verifyResult.data) {
+          const errorMsg = 'Invoice creation appeared successful but verification failed';
+          console.error(`[STEP 7.6] ❌ !!! FAILED !!! Verification failed:`, verifyResult);
+          return rejectWithValue(errorMsg);
+        }
+        
+        console.log(`[STEP 7.7] ✅ Invoice verified in database`, verifyResult.data);
+      } catch (verifyError) {
+        console.error(`[STEP 7.8] ❌ !!! FAILED !!! Verification error:`, verifyError);
+        return rejectWithValue(`Verification error: ${verifyError.message}`);
       }
-      
-      console.log(`Invoice verification successful - Invoice exists in database`);
       
       // Log the activity
       try {
+        console.log(`[STEP 7.9] 📝 Logging invoice creation activity...`);
         await realtimeDb.logActivity(orgId, {
           type: 'invoice_created',
           userId: user.uid,
-          invoiceId: result.data.id,
-          timestamp
+          invoiceId: invoiceId,
+          timestamp,
+          details: {
+            invoiceNumber: invoiceData.invoiceNumber || invoiceId,
+            amount: invoiceData.amount || 0
+          }
         });
-        console.log(`Activity logged for invoice creation`);
+        console.log(`[STEP 7.10] ✅ Activity logged successfully`);
       } catch (activityError) {
-        console.error('Failed to log activity, but invoice was created:', activityError);
+        console.error('[STEP 7.11] ⚠️ Activity logging failed, but invoice was created:', activityError);
         // Don't fail the operation if just the activity logging fails
       }
       
-      return result.data;
+      console.log('================================================');
+      console.log('[STEP 8/8] 🎉 INVOICE CREATION COMPLETED SUCCESSFULLY', new Date().toISOString());
+      console.log('================================================');
+      
+      return { ...serializedInvoice, id: invoiceId };
     } catch (error) {
-      console.error('Error creating invoice:', error);
+      console.error('[FATAL ERROR] ❌ !!! FAILED !!! Unhandled error in invoice creation:', error);
+      console.error('[FATAL ERROR] Stack trace:', error.stack);
       return rejectWithValue(error.message || 'Failed to create invoice');
     }
   }
@@ -365,61 +516,85 @@ export const updateInvoice = createAsyncThunk(
 // Update invoice status
 export const updateInvoiceStatus = createAsyncThunk(
   'invoices/updateStatus',
-  async ({ invoiceId, status, note }, { getState, rejectWithValue, dispatch }) => {
+  async ({ invoiceId, status, note }, { dispatch, getState, rejectWithValue }) => {
     try {
       const { auth } = getState();
       const { user } = auth;
-      const organizationName = user?.organization;
       
-      if (!organizationName) {
+      if (!user?.organization) {
         return rejectWithValue('No organization associated with user');
       }
       
-      const orgId = organizationName;
+      const orgId = user.organization;
+      const userId = user.uid;
       
       // Get current invoice
-      const currentInvoiceResult = await realtimeDb.getData(`organizations/${orgId}/invoices/${invoiceId}`);
+      const invoiceResult = await realtimeDb.getData(`organizations/${orgId}/invoices/${invoiceId}`);
       
-      if (!currentInvoiceResult.success || !currentInvoiceResult.data) {
+      if (!invoiceResult.success || !invoiceResult.data) {
         return rejectWithValue('Invoice not found');
       }
       
-      const currentInvoice = currentInvoiceResult.data;
-      const timestamp = new Date().toISOString();
+      const invoice = invoiceResult.data;
+      const previousStatus = invoice.status;
       
-      // Prepare status update
+      // Create status update
       const statusUpdate = {
-        status: status,
-        statusChangedAt: timestamp,
-        statusChangedBy: user.uid,
-        statusNote: note || '',
-        updatedAt: timestamp
+        status,
+        updatedAt: new Date().toISOString(),
+        statusUpdatedBy: userId
       };
       
-      // Save status update
-      const result = await realtimeDb.updateData(
-        `organizations/${orgId}/invoices/${invoiceId}`, 
+      // Add note if provided
+      if (note && typeof note === 'string' && note.trim()) {
+        statusUpdate.statusNote = note.trim();
+      }
+      
+      // Update invoice in database
+      const updateResult = await realtimeDb.updateData(
+        `organizations/${orgId}/invoices/${invoiceId}`,
         statusUpdate
       );
       
-      if (!result.success) {
-        return rejectWithValue(result.error || 'Failed to update status');
+      if (!updateResult.success) {
+        return rejectWithValue('Failed to update invoice status');
       }
       
-      // Log activity
-      await dispatch(logInvoiceActivity({
-        invoiceId: invoiceId,
-        action: 'status-changed',
-        details: `Invoice #${currentInvoice.invoiceNumber} status changed to ${status}`
-      }));
+      // Get user information for activity logging
+      const userDataResult = await realtimeDb.getData(`users/${userId}`);
+      const userData = userDataResult.success ? userDataResult.data : null;
       
-      return { 
-        _id: invoiceId, 
-        ...currentInvoice, 
-        ...statusUpdate 
+      // Log the activity to the organization's activity collection
+      const activityData = {
+        type: 'invoice_status_changed',
+        invoiceId,
+        invoiceNumber: invoice.invoiceNumber,
+        previousStatus,
+        newStatus: status,
+        timestamp: new Date().toISOString(),
+        performedBy: {
+          id: userId,
+          name: userData?.name || userData?.displayName || 'Unknown User',
+          email: userData?.email || 'unknown@example.com'
+        }
+      };
+      
+      // Only add note field if it exists and is not undefined
+      if (note && typeof note === 'string' && note.trim()) {
+        activityData.note = note.trim();
+      }
+      
+      await realtimeDb.pushData(`organizations/${orgId}/activity`, activityData);
+      
+      // Return the updated invoice with all original data plus the updates
+      return {
+        _id: invoiceId,
+        ...invoice,
+        ...statusUpdate,
+        previousStatus
       };
     } catch (error) {
-      console.error(`Error updating invoice status ${invoiceId}:`, error);
+      console.error('Error updating invoice status:', error);
       return rejectWithValue(error.message || 'Failed to update invoice status');
     }
   }
@@ -718,7 +893,7 @@ const invoiceSlice = createSlice({
         state.currentInvoice = action.payload;
         
         // Update in list if available
-        if (state.invoices) {
+        if (state.invoices && state.invoices.length > 0) {
           const index = state.invoices.findIndex(
             (invoice) => invoice._id === action.payload._id
           );

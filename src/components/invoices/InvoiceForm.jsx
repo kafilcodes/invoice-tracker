@@ -13,6 +13,7 @@ import { logActivity, ACTIVITY_TYPES } from '../../utils/activityLogger';
 import FileUploader from '../common/FileUploader';
 import { v4 as uuidv4 } from 'uuid';
 import { createInvoice, updateInvoice } from '../../redux/slices/invoiceSlice';
+import { toast } from 'react-hot-toast';
 
 // Helper function to upload multiple files to Firebase Storage
 const uploadMultipleFiles = async (files, basePath, options = {}) => {
@@ -238,14 +239,19 @@ const InvoiceForm = ({ isEdit = false }) => {
   
   // Handle file changes from FileUploader
   const handleFileChange = (files) => {
-    setForm((prev) => ({
+    console.log('Files selected:', files);
+    if (!files || files.length === 0) return;
+
+    // Store the actual File objects which will be uploaded
+    const newAttachments = Array.from(files).map(file => file);
+    
+    // Update form state with file objects
+    setForm(prev => ({
       ...prev,
-      attachments: files
+      attachments: newAttachments
     }));
     
-    if (errors.attachments) {
-      setErrors(prev => ({ ...prev, attachments: '' }));
-    }
+    console.log(`Added ${newAttachments.length} files to form data`);
   };
   
   // Validate form before submission
@@ -278,68 +284,48 @@ const InvoiceForm = ({ isEdit = false }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    // Validate form
-    if (!validateForm()) {
-      setFormError('Please fix the errors in the form');
-      return;
-    }
-    
+    if (isSubmitting) return;
     setIsSubmitting(true);
     setFormError('');
     
     try {
-      // Convert dates to ISO strings for proper serialization
-      const invoiceDate = form.invoiceDate ? form.invoiceDate.toISOString() : null;
-      const dueDate = form.dueDate ? form.dueDate.toISOString() : null;
+      console.log('Submitting invoice form:', form);
       
-      // Prepare invoice data
-      const invoiceData = {
-        invoiceNumber: form.invoiceNumber,
-        invoiceDate: invoiceDate,
-        dueDate: dueDate,
-        amount: parseFloat(form.amount),
-        currency: form.currency,
-        vendorName: form.vendorName,
-        description: form.description,
-        status: form.status || 'pending',
-        notes: form.notes,
-        customFields: form.customFields,
-        updatedAt: new Date().toISOString()
+      // Validate required fields
+      if (!form.invoiceNumber || !form.amount || !form.dueDate) {
+        setFormError('Please fill in all required fields');
+        setIsSubmitting(false);
+        return;
+      }
+      
+      const payload = {
+        ...form,
+        // Keep the file objects in the attachments array for upload
+        // No need to modify this, as we'll directly use the File objects
       };
       
-      if (isEdit) {
-        // Update existing invoice using Redux thunk
-        const result = await dispatch(updateInvoice({
-          id,
-          invoiceData
-        })).unwrap();
-        
-        // Navigate back to invoice detail
-        navigate(`/invoices/${id}`);
+      console.log('Prepared invoice payload:', payload);
+      console.log('Attachment count:', (payload.attachments || []).length);
+      
+      // Create or update the invoice
+      if (isEdit && id) {
+        console.log(`Updating invoice ${id}`);
+        const result = await dispatch(updateInvoice({ id, invoiceData: payload })).unwrap();
+        console.log('Invoice updated successfully:', result);
+        toast.success('Invoice updated successfully!');
       } else {
-        // Create new invoice using Redux thunk
-        invoiceData.createdBy = user.uid;
-        invoiceData.createdAt = new Date().toISOString();
-        
-        // Extract File objects for upload if any
-        let attachmentFiles = [];
-        if (form.attachments && form.attachments.length > 0) {
-          attachmentFiles = form.attachments.map(attachment => 
-            attachment.file ? attachment.file : attachment);
-        }
-        
-        // Dispatch create invoice action
-        const result = await dispatch(createInvoice({
-          ...invoiceData,
-          attachments: attachmentFiles
-        })).unwrap();
-        
-        // Navigate to the invoice detail page
-        navigate(`/invoices/${result._id || result.id}`);
+        console.log('Creating new invoice');
+        const result = await dispatch(createInvoice(payload)).unwrap();
+        console.log('Invoice created successfully:', result);
+        toast.success('Invoice created successfully!');
       }
-    } catch (error) {
-      console.error(`Error ${isEdit ? 'updating' : 'creating'} invoice:`, error);
-      setFormError(`Failed to ${isEdit ? 'update' : 'create'} invoice: ${error.message || 'Please try again.'}`);
+      
+      // Navigate back to list view
+      navigate('/invoices');
+    } catch (err) {
+      console.error('Error submitting invoice:', err);
+      setFormError(err.message || 'Failed to save invoice');
+      toast.error('Failed to save invoice');
     } finally {
       setIsSubmitting(false);
     }

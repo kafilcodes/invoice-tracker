@@ -14,7 +14,7 @@ import {
   updateEmail as firebaseUpdateEmail
 } from 'firebase/auth';
 import { app, auth } from './config';
-import realtimeDb from './realtimeDatabase';
+import realtimeDb from './realtimeDb';
 
 /**
  * Handle auth errors and provide a standardized response
@@ -140,34 +140,61 @@ class AuthService {
         console.error("Error saving user data:", userDataResult.error);
       }
       
-      // If user is admin, create organization structure
-      if (userData.role === 'admin' && userData.organization) {
-        const orgId = userData.organization;
-        console.log(`Creating organization with original casing: ${orgId}`);
-        
-        // Create organization in 'organizations' collection
-        const orgResult = await realtimeDb.setData(`organizations/${orgId}`, {
-          name: userData.organization,
-          createdBy: user.uid,
-          createdAt: timestamp,
-          updatedAt: timestamp,
-          adminIds: [user.uid]
-        });
-        
-        if (!orgResult.success) {
-          console.error("Error creating organization:", orgResult.error);
-        }
-        
-        // Create initial empty collections for organization data
-        await realtimeDb.setData(`organizations/${orgId}/invoices`, {});
-        await realtimeDb.setData(`organizations/${orgId}/activity`, {});
-        await realtimeDb.setData(`organizations/${orgId}/members`, {
-          [user.uid]: {
-            uid: user.uid,
-            role: 'admin',
-            joinedAt: timestamp
+      // Get organization ID
+      const orgId = userData.organization;
+      
+      if (orgId) {
+        // Handle different user roles
+        if (userData.role === 'admin') {
+          console.log(`Creating organization with original casing: ${orgId}`);
+          
+          // Create organization in 'organizations' collection
+          const orgResult = await realtimeDb.setData(`organizations/${orgId}`, {
+            name: userData.organization,
+            createdBy: user.uid,
+            createdAt: timestamp,
+            updatedAt: timestamp,
+            adminIds: [user.uid]
+          });
+          
+          if (!orgResult.success) {
+            console.error("Error creating organization:", orgResult.error);
           }
-        });
+          
+          // Create initial empty collections for organization data
+          await realtimeDb.setData(`organizations/${orgId}/invoices`, {});
+          await realtimeDb.setData(`organizations/${orgId}/activity`, {});
+          await realtimeDb.setData(`organizations/${orgId}/members`, {
+            [user.uid]: {
+              uid: user.uid,
+              role: 'admin',
+              joinedAt: timestamp
+            }
+          });
+        } else if (userData.role === 'reviewer') {
+          // For reviewer users, add them to the organization's members collection
+          console.log(`Adding reviewer user to organization: ${orgId}`);
+          
+          // First, check if organization exists
+          const orgExists = await realtimeDb.getData(`organizations/${orgId}`);
+          
+          if (orgExists.success && orgExists.data) {
+            // Add user to organization members
+            await realtimeDb.setData(`organizations/${orgId}/members/${user.uid}`, {
+              uid: user.uid,
+              name: userData.name || "",
+              email: email,
+              role: 'reviewer',
+              joinedAt: timestamp,
+              department: userData.department || "General",
+              active: true
+            });
+            
+            console.log(`Successfully added reviewer to organization's members`);
+          } else {
+            console.error(`Organization ${orgId} does not exist for reviewer to join`);
+          }
+        }
       }
       
       return {

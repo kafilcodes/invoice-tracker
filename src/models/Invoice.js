@@ -234,16 +234,11 @@ export class Invoice {
   }
 
   /**
-   * Create an Invoice instance from Firestore data
-   * @param {Object} data - Firestore document data
+   * Create an Invoice instance from Realtime DB data
+   * @param {Object} data - Realtime DB data
    * @returns {Invoice} - New Invoice instance
    */
-  static fromFirestore(data) {
-    return new Invoice({
-      ...data,
-      // Convert Firestore timestamps if needed
-      createdAt: data.createdAt ? data.createdAt.toDate?.() || data.createdAt : null,
-      updatedAt: data.updatedAt ? data.updatedAt.toDate?.() || data.updatedAt : null
-    });
+  static fromRealtime(data) {
+    return new Invoice(data);
   }
 } 

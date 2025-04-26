@@ -72,10 +72,10 @@ import {
   getOrganizationUsers,
   assignInvoiceReviewers,
 } from '../redux/slices/invoiceSlice';
-import { collection, doc, getDoc, setDoc, addDoc, serverTimestamp, query, where, getDocs } from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
-import { db, storage, auth } from '../firebase';
+import { rtdb, storage, auth } from '../firebase';
 import { logActivity } from '../utils/activityLogger';
+import { v4 as uuidv4 } from 'uuid';
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 const MAX_NOTE_LENGTH = 1000;
@@ -503,32 +503,22 @@ const InvoiceForm = () => {
       }
 
       // Create a new invoice object
+      const timestamp = new Date().toISOString();
+      let invoiceId = id || uuidv4();
+
       const invoiceData = {
         ...formData,
+        id: invoiceId,
         status: 'pending',
         createdBy: auth.currentUser.uid,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
+        createdAt: timestamp,
+        updatedAt: timestamp,
         organizationId: organizationId,
         customFields: formData.customFields,
         notes: formData.note,
         reviewers: selectedReviewers,
         attachments: [], // Will be populated after file uploads
       };
-
-      // Save the invoice document
-      let invoiceRef;
-      if (isEditMode) {
-        // Update existing invoice
-        invoiceRef = doc(db, `organizations/${organizationId}/invoices`, id);
-        await setDoc(invoiceRef, invoiceData, { merge: true });
-      } else {
-        // Create new invoice
-        invoiceRef = await addDoc(
-          collection(db, `organizations/${organizationId}/invoices`), 
-          invoiceData
-        );
-      }
 
       // Upload attachments if any
       const uploadPromises = [];
@@ -538,7 +528,7 @@ const InvoiceForm = () => {
         if (attachment.file) {
           // This is a new file that needs to be uploaded
           const fileName = `${Date.now()}_${attachment.name}`;
-          const filePath = `organizations/${organizationId}/invoices/${invoiceRef.id}/attachments/${fileName}`;
+          const filePath = `organizations/${organizationId}/invoices/${invoiceId}/attachments/${fileName}`;
           const storageRef = ref(storage, filePath);
           
           const uploadTask = uploadBytesResumable(storageRef, attachment.file);
@@ -591,22 +581,24 @@ const InvoiceForm = () => {
       // Wait for all uploads to complete
       await Promise.all(uploadPromises);
 
-      // Update invoice with attachment data
-      await setDoc(
-        invoiceRef, 
-        { 
-          attachments: uploadedAttachments,
-          updatedAt: serverTimestamp()
-        }, 
-        { merge: true }
-      );
+      // Add attachments to invoice data
+      invoiceData.attachments = uploadedAttachments;
+      
+      // Save to Realtime Database
+      if (isEditMode) {
+        // Update existing invoice
+        await rtdb.updateData(`organizations/${organizationId}/invoices/${invoiceId}`, invoiceData);
+      } else {
+        // Create new invoice
+        await rtdb.setData(`organizations/${organizationId}/invoices/${invoiceId}`, invoiceData);
+      }
 
       // Log the activity
       await logActivity({
         action: isEditMode ? 'update_invoice' : 'create_invoice',
         userId: auth.currentUser.uid,
         organizationId: organizationId,
-        targetId: invoiceRef.id,
+        targetId: invoiceId,
         targetType: 'invoice',
         details: {
           invoiceNumber: formData.invoiceNumber,

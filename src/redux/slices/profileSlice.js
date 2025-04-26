@@ -2,7 +2,7 @@ import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import { 
   getUserProfile, 
   updateUserProfile 
-} from '../../firebase/firestore';
+} from '../../firebase/realtimeProfile';
 import { auth } from '../../firebase/config';
 import { uploadProfilePictureWithAPI } from '../../utils/crudOperations';
 
@@ -78,7 +78,7 @@ export const updateProfile = createAsyncThunk(
         _fieldsToUpdate: Object.keys(profileData)
       };
       
-      // Update the profile in Firestore
+      // Update the profile in Realtime Database
       const updatedProfile = await updateUserProfile(currentUser.uid, updatePayload);
       
       // Update local storage

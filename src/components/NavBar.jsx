@@ -39,9 +39,9 @@ import {
   GitHub as GitHubIcon,
   Business as BusinessIcon
 } from '@mui/icons-material';
-import { logout, selectUser } from '../redux/slices/authSlice';
+import { logout } from '../redux/slices/authSlice';
 import { toggleColorMode } from '../redux/slices/themeSlice';
-import realtimeDb from '../firebase/realtimeDatabase';
+import { getCurrentUser } from '../firebase/firebase';
 import billLogo from '/bill.png';
 
 const NavBar = ({ admin = false }) => {
@@ -55,41 +55,26 @@ const NavBar = ({ admin = false }) => {
   
   const [open, setOpen] = useState(true); // Sidebar open by default
   const [currentTime, setCurrentTime] = useState(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
-  const [profileData, setProfileData] = useState(null);
+  const [firebaseUser, setFirebaseUser] = useState(null);
   
-  // Fetch user profile data from Realtime Database
+  // Fetch current user data from Firebase directly
   useEffect(() => {
-    let unsubscribe = () => {};
-    
-    const fetchProfileData = async () => {
+    const fetchFirebaseUser = async () => {
       if (!user?.uid) return;
       
       try {
-        // Set up realtime listener for profile data
-        unsubscribe = realtimeDb.subscribeToData(
-          `users/${user.uid}`,
-          (data) => {
-            if (data) {
-              setProfileData(data);
-            }
-          },
-          (error) => {
-            console.error('Error fetching profile data:', error);
-          }
-        );
+        const result = await getCurrentUser();
+        if (result.success && result.data) {
+          console.log('Firebase user data fetched:', result.data);
+          setFirebaseUser(result.data);
+        }
       } catch (error) {
-        console.error('Error setting up profile listener:', error);
+        console.error('Error fetching Firebase user:', error);
       }
     };
     
-    fetchProfileData();
-    
-    return () => {
-      if (typeof unsubscribe === 'function') {
-        unsubscribe();
-      }
-    };
-  }, [user]);
+    fetchFirebaseUser();
+  }, [user?.uid]);
   
   // Update current time every second
   useEffect(() => {
@@ -104,9 +89,27 @@ const NavBar = ({ admin = false }) => {
     setOpen(!open);
   };
   
-  const displayName = profileData?.displayName || user?.displayName || data?.name || 'User';
-  const photoURL = profileData?.photoURL || user?.photoURL || data?.profilePicture || '';
-  const userRole = profileData?.role || user?.role || 'Reviewer';
+  // More robustly determine user info from all sources with Firebase priority
+  const displayName = firebaseUser?.displayName || user?.displayName || data?.name || 'User';
+  // Ensure we're checking all possible sources for the profile photo
+  const photoURL = firebaseUser?.photoURL || user?.photoURL || data?.profilePicture || '';
+  // Capitalize role for display
+  const userRole = ((firebaseUser?.role || user?.role || data?.role || 'reviewer')?.charAt(0).toUpperCase() + 
+                   (firebaseUser?.role || user?.role || data?.role || 'reviewer')?.slice(1));
+  // Ensure organization and department are properly captured from all sources - preserve original case
+  const userOrganization = firebaseUser?.organization || user?.organization || data?.organization || '';
+  const userDepartment = firebaseUser?.department || user?.department || data?.department || '';
+  // Log what we found to help debugging
+  console.log('NavBar profile info:', {
+    displayName,
+    photoURL,
+    userRole,
+    userOrganization,
+    userDepartment,
+    firebaseUserData: !!firebaseUser,
+    userData: !!user,
+    profileStateData: !!data
+  });
 
   function handleLogout() {
     dispatch(logout());
@@ -204,7 +207,7 @@ const NavBar = ({ admin = false }) => {
         name: 'Create Invoice',
         icon: <AddIcon />,
         to: '/invoices/create',
-        hide: (userRole === 'reviewer' || user?.role === 'reviewer' || profileData?.role === 'reviewer')
+        hide: (userRole.toLowerCase() === 'reviewer')
       },
       {
         name: 'Invoices',
@@ -223,12 +226,55 @@ const NavBar = ({ admin = false }) => {
       },
     ];
 
-    // Admin items definition would be here
+    // Admin items with admin-specific navigation
     const adminItems = [
-      // Admin items would be defined here
+      {
+        name: 'Dashboard',
+        icon: <DashboardIcon />,
+        to: '/',
+      },
+      {
+        name: 'Organization',
+        icon: <BusinessIcon />,
+        to: '/admin/organization',
+      },
+      {
+        name: 'All Invoices',
+        icon: <DescriptionIcon />,
+        to: '/invoices',
+      },
+      {
+        name: 'Create Invoice',
+        icon: <AddIcon />,
+        to: '/invoices/create',
+      },
+      {
+        name: 'Activity Logs',
+        icon: <AssessmentIcon />,
+        to: '/activity-logs',
+      },
+      {
+        name: 'Profile',
+        icon: <PersonIcon />,
+        to: '/profile',
+      },
+      {
+        name: 'Logout',
+        icon: <LogoutIcon />,
+        onClick: handleLogout,
+      },
     ];
 
-    return user?.role === 'admin' ? adminItems : regularItems;
+    // Check if the user is an admin using all possible sources of truth
+    const isAdmin = firebaseUser?.role === 'admin' || user?.role === 'admin' || userRole.toLowerCase() === 'admin';
+    console.log('Navigation role check:', { 
+      firebaseUserRole: firebaseUser?.role,
+      storeUserRole: user?.role, 
+      userRoleState: userRole,
+      isAdmin
+    });
+    
+    return isAdmin ? adminItems : regularItems;
   };
 
   // Generate nav items based on user role
@@ -239,7 +285,7 @@ const NavBar = ({ admin = false }) => {
       console.error('Error generating navigation items:', error);
       return [];
     }
-  }, [user, userRole, profileData, handleLogout]);
+  }, [user, userRole, firebaseUser, handleLogout]);
   
   // Handle mobile nav item click
   const handleMobileItemClick = (item) => {
@@ -324,6 +370,11 @@ const NavBar = ({ admin = false }) => {
     </Box>
   );
   
+  // Add a function to open GitHub profile
+  const openGitHubProfile = () => {
+    window.open('https://github.com/kafilcodes', '_blank');
+  };
+  
   return (
     <>
       <GlobalStyles
@@ -396,8 +447,11 @@ const NavBar = ({ admin = false }) => {
                   display: 'flex', 
                   alignItems: 'center',
                   justifyContent: 'center',
-                  flex: 1
-                }}>
+                  flex: 1,
+                  cursor: 'pointer',
+                }}
+                onClick={openGitHubProfile}
+                >
                   <Box sx={{ display: 'flex', alignItems: 'center', mr: 1 }}>
                     <img 
                       src={billLogo} 
@@ -419,8 +473,11 @@ const NavBar = ({ admin = false }) => {
                   display: 'flex', 
                   alignItems: 'center',
                   justifyContent: 'center',
-                  flex: 1
-                }}>
+                  flex: 1,
+                  cursor: 'pointer',
+                }}
+                onClick={openGitHubProfile}
+                >
                   <img 
                     src={billLogo} 
                     alt="Invoice Tracker" 
@@ -478,7 +535,7 @@ const NavBar = ({ admin = false }) => {
             >
               <Avatar
                 alt={displayName}
-                src={photoURL}
+                src={photoURL || '/default-avatar.png'}
                 sx={{
                   width: 80,
                   height: 80,
@@ -515,8 +572,48 @@ const NavBar = ({ admin = false }) => {
                       zIndex: 1
                     }}
                   >
-                    {user?.email || "user@example.com"}
+                    {user?.email || firebaseUser?.email || "user@example.com"}
                   </Typography>
+                  
+                  {/* Organization and department section - ALWAYS VISIBLE if org exists */}
+                  {userOrganization && (
+                    <Box sx={{ 
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      mt: 0.5,
+                      mb: 1.5,
+                      zIndex: 1,
+                      backgroundColor: theme.palette.mode === 'dark' 
+                        ? 'rgba(255,255,255,0.1)' 
+                        : 'rgba(0,0,0,0.1)',
+                      px: 1.5,
+                      py: 0.5,
+                      borderRadius: 1,
+                      width: 'fit-content'
+                    }}>
+                      <Typography 
+                        variant="body2" 
+                        sx={{ 
+                          color: theme.palette.mode === 'dark' ? 'white' : 'primary.contrastText',
+                          fontWeight: 'bold',
+                          fontSize: '0.8rem',
+                          letterSpacing: '0.02em',
+                          display: 'flex',
+                          alignItems: 'center'
+                        }}
+                      >
+                        <BusinessIcon sx={{ fontSize: 14, mr: 0.5 }} />
+                        {userOrganization}
+                        {userDepartment && (
+                          <>
+                            <Box component="span" sx={{ mx: 0.5 }}>|</Box>
+                            {userDepartment}
+                          </>
+                        )}
+                      </Typography>
+                    </Box>
+                  )}
                   
                   <Box sx={{ 
                     display: 'flex',
@@ -527,7 +624,7 @@ const NavBar = ({ admin = false }) => {
                     <Chip
                       size="small"
                       label={userRole}
-                      color="secondary"
+                      color={userRole.toLowerCase() === 'admin' ? "error" : "secondary"}
                       icon={<AdminPanelIcon sx={{ fontSize: '16px !important' }} />}
                       sx={{ 
                         fontSize: '0.7rem',
@@ -536,59 +633,6 @@ const NavBar = ({ admin = false }) => {
                       }}
                     />
                   </Box>
-                  
-                  {profileData?.organization && (
-                    <Box sx={{ 
-                      display: 'flex',
-                      alignItems: 'center',
-                      mt: 1,
-                      gap: 1,
-                      zIndex: 1
-                    }}>
-                      <Avatar
-                        src={profileData?.organizationLogo}
-                        alt={profileData.organization}
-                        sx={{ 
-                          width: 18,
-                          height: 18,
-                          mr: 0.5,
-                          fontSize: '12px',
-                          bgcolor: 'primary.main'
-                        }}
-                      >
-                        {!profileData?.organizationLogo && <BusinessIcon sx={{ fontSize: 12 }} />}
-                      </Avatar>
-                      <Typography 
-                        variant="caption" 
-                        sx={{ 
-                          color: theme.palette.mode === 'dark' ? 'text.secondary' : 'white',
-                          fontWeight: 'medium'
-                        }}
-                      >
-                        {profileData.organization}
-                      </Typography>
-                      {profileData?.department && (
-                        <>
-                          <Box 
-                            component="span" 
-                            sx={{ 
-                              mx: 0.5, 
-                              color: theme.palette.mode === 'dark' ? 'text.disabled' : 'rgba(255,255,255,0.5)'
-                            }}
-                          >|</Box>
-                          <PeopleIcon sx={{ fontSize: 14, color: theme.palette.mode === 'dark' ? 'text.disabled' : 'rgba(255,255,255,0.7)' }} />
-                          <Typography 
-                            variant="caption" 
-                            sx={{ 
-                              color: theme.palette.mode === 'dark' ? 'text.disabled' : 'rgba(255,255,255,0.7)',
-                            }}
-                          >
-                            {profileData.department}
-                          </Typography>
-                        </>
-                      )}
-                    </Box>
-                  )}
                 </>
               )}
             </Box>
@@ -705,20 +749,21 @@ const NavBar = ({ admin = false }) => {
             <Typography variant="caption" color="text.secondary" align="center">
               © 2025 All Rights Reserved
             </Typography>
-            <Typography variant="caption" color="text.secondary" align="center" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            <Typography 
+              variant="caption" 
+              color="text.secondary" 
+              align="center" 
+              sx={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: 0.5,
+                cursor: 'pointer',
+                '&:hover': { textDecoration: 'underline' }
+              }}
+              onClick={openGitHubProfile}
+            >
               <GitHubIcon fontSize="small" sx={{ fontSize: '14px' }} />
-              <Link 
-                href="https://github.com/kafilcodes" 
-                target="_blank" 
-                rel="noopener noreferrer"
-                sx={{ 
-                  textDecoration: 'none', 
-                  '&:hover': { textDecoration: 'underline' },
-                  color: 'inherit'
-                }}
-              >
-                Made by kafilcodes
-              </Link>
+              Made by kafilcodes
             </Typography>
           </Box>
         </Drawer>

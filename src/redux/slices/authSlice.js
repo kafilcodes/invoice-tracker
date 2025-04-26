@@ -289,21 +289,53 @@ export const setupAuthListener = (store) => {
   const auth = getAuth(app);
   return onAuthStateChanged(auth, async (user) => {
     if (user) {
-      // User is signed in
-      const userResponse = await authService.getCurrentUser();
-      if (userResponse.success) {
-        store.dispatch(setUser(userResponse.data));
-      } else {
-        // Fallback to basic user info if Firestore fetch fails
+      try {
+        // User is signed in - get full user data including role and organization
+        const userResponse = await authService.getCurrentUser();
+        
+        if (userResponse.success) {
+          console.log('Auth state updated with user data:', {
+            role: userResponse.data.role,
+            org: userResponse.data.organization,
+            uid: userResponse.data.uid
+          });
+          
+          // Update Redux store with complete user data
+          const serializedUser = serializeUser(userResponse.data);
+          store.dispatch(setUser(serializedUser));
+          
+          // Log user attributes to help debugging
+          console.log('User authenticated with attributes:', {
+            role: serializedUser.role || 'Not set',
+            organization: serializedUser.organization || 'Not set',
+            isAdmin: serializedUser.role === 'admin'
+          });
+        } else {
+          console.warn('Failed to fetch complete user data, using basic info', userResponse.error);
+          // Fallback to basic user info if database fetch fails
+          store.dispatch(setUser({
+            uid: user.uid,
+            email: user.email,
+            displayName: user.displayName,
+            photoURL: user.photoURL,
+            // Default to reviewer role as a fallback
+            role: 'reviewer'
+          }));
+        }
+      } catch (error) {
+        console.error('Error in auth state listener:', error);
+        // Fallback with minimal user data
         store.dispatch(setUser({
           uid: user.uid,
           email: user.email,
           displayName: user.displayName,
-          photoURL: user.photoURL
+          photoURL: user.photoURL,
+          role: 'reviewer'
         }));
       }
     } else {
       // User is signed out
+      console.log('User signed out, clearing auth state');
       store.dispatch(setUser(null));
     }
   });

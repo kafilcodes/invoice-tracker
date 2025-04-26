@@ -20,7 +20,6 @@ import InvoiceList from './pages/InvoiceList';
 import InvoiceDetail from './pages/InvoiceDetail';
 import NotFound from './pages/NotFound';
 import Profile from './pages/Profile';
-import OrganizationSettings from './pages/OrganizationSettings';
 import FirebaseDiagnostic from './pages/FirebaseDiagnostic';
 import EnvDebugger from './pages/EnvDebugger';
 import FirebaseRecovery from './components/FirebaseRecovery';
@@ -28,7 +27,7 @@ import Cleanup from './pages/Cleanup';
 import RealtimeDatabaseTest from './pages/RealtimeDatabaseTest';
 import FirebaseAuthTest from './pages/FirebaseAuthTest';
 import Settings from './pages/Settings';
-import ActivityLogs from './pages/ActivityLogs';
+import ActivityLogs from './pages/admin/ActivityLogs';
 import NotificationsPage from './pages/Notifications';
 
 // Lazy-loaded components
@@ -37,6 +36,7 @@ const UserManagement = lazy(() => import('./pages/admin/UserManagement'));
 const AdminDashboard = lazy(() => import('./pages/admin/AdminDashboard'));
 const InvoiceApproval = lazy(() => import('./pages/InvoiceApproval'));
 const SystemSettings = lazy(() => import('./pages/admin/SystemSettings'));
+const Organization = lazy(() => import('./pages/admin/Organization'));
 
 // Components
 import ProtectedRoute from './components/auth/ProtectedRoute';
@@ -107,10 +107,8 @@ function App() {
               <Route element={<ProtectedRoute requiredRole="admin" />}>
                 <Route element={<AdminLayout />}>
                   <Route path="/admin/dashboard" element={<AdminDashboard />} />
-                  <Route path="/admin/users" element={<UserManagement />} />
                   <Route path="/admin/logs" element={<ActivityLogs />} />
-                  <Route path="/admin/settings" element={<SystemSettings />} />
-                  <Route path="/admin/organization" element={<OrganizationSettings />} />
+                  <Route path="/admin/organization" element={<Organization />} />
                   <Route path="/admin/profile" element={<Profile />} />
                   <Route path="/admin/invoices" element={<InvoiceList />} />
                   <Route path="/admin/invoices/create" element={<InvoiceCreate />} />
@@ -130,7 +128,6 @@ function App() {
                   <Route path="/profile" element={<Profile />} />
                   <Route path="/activity-logs" element={<ActivityLogs />} />
                   <Route path="/notifications" element={<NotificationsPage />} />
-                  <Route path="/organization" element={<OrganizationSettings />} />
                   <Route path="/settings" element={<Settings />} />
                 </Route>
               </Route>

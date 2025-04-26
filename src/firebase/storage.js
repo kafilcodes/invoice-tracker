@@ -76,4 +76,31 @@ export const uploadProfilePicture = async (file, userId, progressCallback = null
  */
 export const uploadCompanyLogo = async (file, companyId, progressCallback = null) => {
   return uploadFile(file, `company-logos/${companyId}`, progressCallback);
+};
+
+/**
+ * Upload an invoice attachment
+ * @param {File} file - The attachment file
+ * @param {string} organizationId - Organization ID
+ * @param {string} invoiceId - Invoice ID
+ * @param {Function} progressCallback - Optional callback for upload progress
+ * @returns {Promise<Object>} - Object containing url, path and file metadata
+ */
+export const uploadInvoiceAttachment = async (file, organizationId, invoiceId, progressCallback = null) => {
+  try {
+    const path = `organizations/${organizationId}/invoices/${invoiceId}/attachments`;
+    const fileUrl = await uploadFile(file, path, progressCallback);
+    
+    return {
+      name: file.name,
+      type: file.type,
+      size: file.size,
+      url: fileUrl,
+      path: `${path}/${file.name}`,
+      uploadedAt: new Date().toISOString(),
+    };
+  } catch (error) {
+    console.error('Invoice attachment upload error:', error);
+    throw error;
+  }
 }; 

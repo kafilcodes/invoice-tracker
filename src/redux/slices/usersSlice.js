@@ -1,5 +1,5 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
-import realtimeDb from '../../firebase/realtimeDatabase';
+import realtimeDb from '../../firebase/realtimeDb';
 
 // Async thunk to fetch users by organization
 export const fetchUsersByOrganization = createAsyncThunk(

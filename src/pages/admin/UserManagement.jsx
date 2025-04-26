@@ -52,21 +52,29 @@ import { useFormik } from 'formik';
 import { format } from 'date-fns';
 
 // Firebase imports
-import { collection, query, getDocs, where, orderBy, doc, updateDoc, serverTimestamp, deleteDoc } from 'firebase/firestore';
 import { rtdb } from '../../firebase/config';
 import { registerWithEmailAndPassword } from '../../firebase/auth';
 
-// User fetching function using Firebase
+// User fetching function using Realtime Database
 const fetchUsers = async () => {
   try {
-    const usersRef = collection(rtdb, "users");
-    const q = query(usersRef, orderBy("createdAt", "desc"));
-    const querySnapshot = await getDocs(q);
+    const usersSnapshot = await rtdb.getData("users");
     
     const users = [];
-    querySnapshot.forEach((doc) => {
-      users.push({ _id: doc.id, ...doc.data() });
-    });
+    if (usersSnapshot.exists) {
+      const usersData = usersSnapshot.val();
+      
+      Object.entries(usersData).forEach(([uid, userData]) => {
+        users.push({ _id: uid, ...userData });
+      });
+      
+      // Sort by createdAt descending
+      users.sort((a, b) => {
+        const dateA = a.createdAt ? new Date(a.createdAt) : new Date(0);
+        const dateB = b.createdAt ? new Date(b.createdAt) : new Date(0);
+        return dateB - dateA;
+      });
+    }
     
     return {
       users,
@@ -122,7 +130,7 @@ const UserManagement = () => {
     loadUsers();
   }, []);
 
-  // Load users from Firebase
+  // Load users from Realtime Database
   const loadUsers = async () => {
     setLoading(true);
     try {
@@ -195,15 +203,14 @@ const UserManagement = () => {
     setConfirmDelete(true);
   };
 
-  // Delete user from Firebase
+  // Delete user from Realtime Database
   const handleDeleteUser = async () => {
     if (!selectedUser) return;
     
     setLoading(true);
     try {
-      // Delete user from Firestore
-      const userRef = doc(rtdb, 'users', selectedUser._id);
-      await deleteDoc(userRef);
+      // Delete user from Realtime Database
+      await rtdb.deleteData(`users/${selectedUser._id}`);
       
       // Update UI
       setUsers(users.filter(user => user._id !== selectedUser._id));
@@ -250,7 +257,7 @@ const UserManagement = () => {
           email: values.email,
           role: values.role,
           active: values.active,
-          createdAt: new Date()
+          createdAt: new Date().toISOString()
         };
         
         setUsers([newUser, ...users]);
@@ -260,19 +267,20 @@ const UserManagement = () => {
           severity: 'success'
         });
       } else {
-        // Update existing user in Firestore
-        const userRef = doc(rtdb, 'users', values._id);
-        await updateDoc(userRef, {
+        // Update existing user in Realtime Database
+        const updates = {
           name: values.name,
           role: values.role,
           active: values.active,
-          updatedAt: serverTimestamp()
-        });
+          updatedAt: new Date().toISOString()
+        };
+        
+        await rtdb.updateData(`users/${values._id}`, updates);
         
         // Update UI with edited user
         setUsers(users.map(user => 
           user._id === values._id 
-            ? { ...user, name: values.name, role: values.role, active: values.active } 
+            ? { ...user, ...updates } 
             : user
         ));
         

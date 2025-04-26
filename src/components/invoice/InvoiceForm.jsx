@@ -177,14 +177,16 @@ const InvoiceForm = ({
       notes: invoice?.notes || '',
       organizationRemark: invoice?.organizationRemark || '',
       organizationYear: invoice?.organizationYear || new Date().getFullYear().toString(),
-      customFields: invoice?.customFields || []
+      customFields: invoice?.customFields || [],
+      attachments: invoice?.attachments || [] // Add attachments to formik
     },
     validationSchema,
     onSubmit: async (values) => {
       try {
+        console.log('[FORM] Form submission started');
         setIsUploading(true);
         
-        // Simulate file upload progress
+        // Start upload progress indication
         const uploadInterval = setInterval(() => {
           setUploadProgress(prev => {
             if (prev >= 100) {
@@ -198,37 +200,43 @@ const InvoiceForm = ({
         // Create form data for submission
         const formData = {
           ...values,
-          files: files.map(file => ({
-            name: file.name,
-            size: file.size,
-            type: file.type
-          })),
+          // Ensure we pass the actual File objects for upload
+          attachments: files,
           createdBy: user?.uid,
           createdAt: new Date().toISOString(),
           status: 'pending',
           organizationId: organization?.id
         };
         
-        // Add a small delay to show upload progress
-        setTimeout(() => {
-          clearInterval(uploadInterval);
-          setUploadProgress(100);
-          
-          // Submit the form
-          onSubmit(formData, invoice?._id);
-          setIsUploading(false);
-        }, 1500);
+        console.log('[FORM] Prepared form data:', {
+          ...formData,
+          attachments: formData.attachments?.map(file => ({
+            name: file.name,
+            type: file.type,
+            size: file.size
+          }))
+        });
+        
+        // Clear the progress indicator
+        clearInterval(uploadInterval);
+        setUploadProgress(100);
+        
+        // Submit the form to parent component
+        onSubmit(formData, invoice?._id);
       } catch (error) {
-        console.error('Error submitting form:', error);
+        console.error('[FORM] Error submitting form:', error);
+      } finally {
         setIsUploading(false);
-        setUploadProgress(0);
       }
     }
   });
   
   // Handle file change
   const handleFileChange = (newFiles) => {
+    console.log('[FORM] Files received:', newFiles);
     setFiles(newFiles);
+    // Store files in formik values too (needed for invoice creation)
+    formik.setFieldValue('attachments', newFiles);
   };
   
   // Handle adding a custom field

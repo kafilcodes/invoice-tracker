@@ -1,10 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { toast } from 'react-toastify';
 import { v4 as uuidv4 } from 'uuid';
-import { db } from '../firebase/config';
+import { rtdb } from '../firebase/config';
 import { uploadMultipleFiles, validateFile, MAX_ATTACHMENTS, ALLOWED_FILE_TYPES } from '../utils/fileUpload';
 import { logActivity } from '../utils/activityLogger';
 import { Button, TextField, Typography, Box, Paper, Grid, MenuItem, IconButton, 
@@ -76,24 +75,28 @@ const InvoiceForm = () => {
   // Fetch users from the same organization
   const fetchOrganizationUsers = async (orgId) => {
     try {
-      const usersRef = collection(db, 'users');
-      const q = query(usersRef, where('organizationId', '==', orgId), orderBy('displayName'));
-      
-      const querySnapshot = await getDocs(q);
+      // Get all users from RTDB
+      const usersSnapshot = await rtdb.getData('users');
       const users = [];
       
-      querySnapshot.forEach((doc) => {
-        const userData = doc.data();
-        // Exclude current user from reviewer list
-        if (userData.uid !== user.uid) {
-          users.push({
-            uid: userData.uid,
-            displayName: userData.displayName,
-            email: userData.email,
-            role: userData.role
-          });
-        }
-      });
+      if (usersSnapshot.exists) {
+        const usersData = usersSnapshot.val();
+        
+        // Filter users by organization ID
+        Object.entries(usersData).forEach(([uid, userData]) => {
+          if (userData.organizationId === orgId && userData.uid !== user.uid) {
+            users.push({
+              uid: userData.uid,
+              displayName: userData.displayName,
+              email: userData.email,
+              role: userData.role
+            });
+          }
+        });
+        
+        // Sort by display name
+        users.sort((a, b) => (a.displayName || '').localeCompare(b.displayName || ''));
+      }
       
       setOrganizationUsers(users);
     } catch (error) {
@@ -245,10 +248,12 @@ const InvoiceForm = () => {
     try {
       setLoading(true);
       
-      // Create invoice document first to get the ID
-      const invoiceRef = collection(db, `organizations/${userProfile.organizationId}/invoices`);
+      // Create invoice data
+      const invoiceId = uuidv4();
+      const timestamp = new Date().toISOString();
       
-      const invoiceData = {
+      const newInvoiceData = {
+        id: invoiceId,
         invoiceNumber: invoiceData.invoiceNumber,
         issueDate: invoiceData.issueDate,
         dueDate: invoiceData.dueDate,
@@ -262,15 +267,12 @@ const InvoiceForm = () => {
         taxAmount: invoiceData.taxAmount ? parseFloat(invoiceData.taxAmount) : 0,
         customFields: customFields.filter(field => field.name && field.value),
         createdBy: user.uid,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
+        createdAt: timestamp,
+        updatedAt: timestamp,
         organizationId: userProfile.organizationId,
         reviewers: selectedReviewers,
         attachments: [] // Will be populated after file upload
       };
-      
-      const docRef = await addDoc(invoiceRef, invoiceData);
-      const invoiceId = docRef.id;
       
       // Upload attachments if any
       if (attachments.length > 0) {
@@ -282,21 +284,22 @@ const InvoiceForm = () => {
         );
         
         if (uploadResult.success) {
-          // Update invoice with attachment details
-          await updateDoc(docRef, {
-            attachments: uploadResult.results.map(result => ({
-              fileName: result.fileName,
-              fileSize: result.fileSize,
-              fileType: result.fileType,
-              downloadURL: result.downloadURL,
-              uploadPath: result.uploadPath
-            }))
-          });
+          // Add attachment details to invoice data
+          newInvoiceData.attachments = uploadResult.results.map(result => ({
+            fileName: result.fileName,
+            fileSize: result.fileSize,
+            fileType: result.fileType,
+            downloadURL: result.downloadURL,
+            uploadPath: result.uploadPath
+          }));
         } else {
           toast.warning('Some attachments failed to upload');
         }
         setUploading(false);
       }
+      
+      // Save to RTDB
+      await rtdb.setData(`organizations/${userProfile.organizationId}/invoices/${invoiceId}`, newInvoiceData);
       
       // Log activity
       await logActivity(

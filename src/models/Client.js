@@ -129,17 +129,12 @@ export class Client {
   }
 
   /**
-   * Create a Client instance from Firestore data
-   * @param {Object} data - Firestore document data
+   * Create a Client instance from Realtime DB data
+   * @param {Object} data - Realtime DB data
    * @returns {Client} - New Client instance
    */
-  static fromFirestore(data) {
-    return new Client({
-      ...data,
-      // Convert Firestore timestamps if needed
-      createdAt: data.createdAt ? data.createdAt.toDate?.() || data.createdAt : null,
-      updatedAt: data.updatedAt ? data.updatedAt.toDate?.() || data.updatedAt : null
-    });
+  static fromRealtime(data) {
+    return new Client(data);
   }
 
   /**

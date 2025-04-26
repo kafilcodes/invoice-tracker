@@ -46,6 +46,15 @@ const initializeFirebaseAuth = () => {
               isEmailVerified: user.emailVerified,
             };
             
+            // Log the detailed user data loaded
+            console.log('User data loaded from database:', {
+              uid: userData.uid,
+              email: userData.email,
+              role: userData.role || 'Not set',
+              organization: userData.organization || 'Not set',
+              department: userData.department || 'Not set'
+            });
+            
             // Update the last login time
             await update(userRef, {
               lastLoginAt: timestamp
@@ -70,6 +79,20 @@ const initializeFirebaseAuth = () => {
             console.log('Created new user document in Realtime Database with reviewer role');
           }
           
+          // Explicitly extract and format organization details
+          if (!userData.organization && user.email && user.email.includes('@')) {
+            const domain = user.email.split('@')[1].split('.')[0];
+            if (domain) {
+              userData.organization = domain.charAt(0).toUpperCase() + domain.slice(1);
+              console.log(`Added derived organization from email: ${userData.organization}`);
+            }
+          }
+          
+          // Make sure department is always set
+          if (!userData.department) {
+            userData.department = 'General';
+          }
+          
           // Dispatch the user data to Redux store
           store.dispatch(setUser(userData));
         } catch (error) {
@@ -91,7 +114,9 @@ const initializeFirebaseAuth = () => {
             displayName: user.displayName || '',
             photoURL: user.photoURL || '',
             isEmailVerified: user.emailVerified,
-            role: 'reviewer'
+            role: 'reviewer',
+            organization: user.email ? user.email.split('@')[1].split('.')[0] : '',
+            department: 'General'
           }));
         }
       } else {

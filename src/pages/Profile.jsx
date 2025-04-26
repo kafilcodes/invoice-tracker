@@ -1,46 +1,53 @@
 import { useState, useEffect, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
+
+// UI components sorted alphabetically
 import {
-  Box,
-  Paper,
-  Typography,
-  TextField,
-  Button,
-  Grid,
-  Avatar,
-  IconButton,
-  Divider,
   Alert,
-  CircularProgress,
-  InputAdornment,
-  Snackbar,
+  Avatar,
+  Box,
+  Button,
   Card,
   CardContent,
+  CardHeader,
+  CircularProgress,
+  Divider,
+  Grid,
+  IconButton,
+  InputAdornment,
+  LinearProgress,
+  Snackbar,
   Stack,
+  TextField,
   Tooltip,
-  Fab,
-  Switch,
-  LinearProgress
+  Typography
 } from '@mui/material';
+
+// Icons sorted alphabetically
 import {
-  CameraAlt as CameraIcon,
-  Edit as EditIcon,
-  Save as SaveIcon,
-  Person as PersonIcon,
+  AdminPanelSettings as AdminIcon,
   AlternateEmail as EmailIcon,
-  Phone as PhoneIcon,
+  Business as BusinessIcon,
+  CameraAlt as CameraIcon,
   Check as CheckIcon,
   Close as CloseIcon,
-  AdminPanelSettings as AdminIcon,
-  Business as BusinessIcon,
-  Work as WorkIcon,
-  People as PeopleIcon
+  Edit as EditIcon,
+  People as PeopleIcon,
+  Person as PersonIcon,
+  Phone as PhoneIcon,
+  Save as SaveIcon
 } from '@mui/icons-material';
-import { getProfile, updateProfile, uploadProfilePicture, resetProfile, updateProfileLocal } from '../redux/slices/profileSlice';
-import { uploadFile } from '../firebase/storage';
+
+// Firebase imports grouped together
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { storage } from '../firebase/config';
-import realtimeDb from '../firebase/realtimeDatabase';
+import { getUserById, updateProfile as updateUserProfile, getCurrentUser } from '../firebase/auth';
+import databaseService from '../firebase/database';
+
+// Redux actions
+import { updateProfileLocal, uploadProfilePicture } from '../redux/slices/profileSlice';
+
+// Other third party libraries
 import { toast, ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
@@ -49,7 +56,10 @@ const Profile = () => {
   const fileInputRef = useRef(null);
   const { user } = useSelector((state) => state.auth);
   const { profileData, isLoading, isSuccess, isError, message } = useSelector((state) => state.profile);
-  const isReviewer = user?.role === 'reviewer';
+  
+  // User role and states
+  const [userRole, setUserRole] = useState('');
+  const [isAdmin, setIsAdmin] = useState(false);
   
   // Edit mode state
   const [editMode, setEditMode] = useState(false);
@@ -79,10 +89,40 @@ const Profile = () => {
     }
   }, [user]);
   
+  // Ensure we have the latest user data
+  useEffect(() => {
+    const refreshUserData = async () => {
+      if (!user?.uid) return;
+      
+      try {
+        // Get real-time user data from Firebase
+        const currentUserResponse = await getCurrentUser();
+        if (currentUserResponse.success && currentUserResponse.data) {
+          const userData = currentUserResponse.data;
+          
+          // Determine if user is an admin from any source of truth
+          const isUserAdmin = userData.role === 'admin' || user?.role === 'admin';
+          setIsAdmin(isUserAdmin);
+          setUserRole(userData.role || user?.role || 'reviewer');
+          
+          console.log('Profile user data check:', {
+            dbRole: userData.role,
+            storeRole: user?.role,
+            isAdmin: isUserAdmin
+          });
+        }
+      } catch (error) {
+        console.error('Error refreshing user data:', error);
+      }
+    };
+    
+    refreshUserData();
+  }, [user]);
+  
   // Fetch user profile from Realtime Database
   const fetchUserProfile = async (uid) => {
     try {
-      const response = await realtimeDb.getUserProfile(uid);
+      const response = await getUserById(uid);
       
       if (response.success && response.data) {
         // Set profile data
@@ -97,6 +137,10 @@ const Profile = () => {
         if (response.data.photoURL || user?.photoURL) {
           setProfilePictureURL(response.data.photoURL || user?.photoURL);
         }
+        
+        // Update role information from database
+        setUserRole(response.data.role || user?.role || 'reviewer');
+        setIsAdmin(response.data.role === 'admin' || user?.role === 'admin');
         
         // Update in Redux store
         dispatch(updateProfileLocal({
@@ -211,7 +255,7 @@ const Profile = () => {
           const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
           
           // Update Realtime Database
-          const updateResponse = await realtimeDb.updateUserProfile(user.uid, {
+          const updateResponse = await databaseService.updateData(`users/${user.uid}`, {
             photoURL: downloadURL,
             updatedAt: new Date().toISOString()
           });
@@ -260,26 +304,15 @@ const Profile = () => {
     }
     
     try {
-      // Update in Realtime Database
+      // Update in Realtime Database using the auth service
       const updatedFields = {
-        displayName: profileInfo.name,
-        updatedAt: new Date().toISOString()
+        name: profileInfo.name,
+        phone: profileInfo.phone || '',
+        jobTitle: profileInfo.jobTitle || '',
+        department: profileInfo.department || ''
       };
       
-      // Only include changed fields
-      if (profileInfo.phone !== profileData?.phone && profileInfo.phone !== '') {
-        updatedFields.phone = profileInfo.phone;
-      }
-      
-      if (profileInfo.jobTitle !== profileData?.jobTitle && profileInfo.jobTitle !== '') {
-        updatedFields.jobTitle = profileInfo.jobTitle;
-      }
-      
-      if (profileInfo.department !== profileData?.department && profileInfo.department !== '') {
-        updatedFields.department = profileInfo.department;
-      }
-      
-      const response = await realtimeDb.updateUserProfile(user.uid, updatedFields);
+      const response = await updateUserProfile(updatedFields);
       
       if (response.success) {
         // Update in Redux store
@@ -330,7 +363,8 @@ const Profile = () => {
           Profile
         </Typography>
         
-        {user?.role !== 'admin' && (
+        {/* Only show the Admin request button if the user is NOT already an admin */}
+        {!isAdmin && userRole !== 'admin' && user?.role !== 'admin' && (
           <Button
             variant="outlined"
             color="primary"
@@ -344,7 +378,7 @@ const Profile = () => {
       
       <Grid container spacing={3}>
         {/* Profile Picture Card */}
-        <Grid item xs={12} md={4}>
+        <Grid lg={4} sm={12}>
           <Card 
             elevation={3} 
             sx={{ 
@@ -450,7 +484,7 @@ const Profile = () => {
               }}
             >
               <AdminIcon sx={{ mr: 1, fontSize: 18 }} />
-              {user?.role === 'admin' ? 'Administrator' : 'Reviewer'}
+              {isAdmin ? 'Administrator' : userRole || 'Reviewer'}
             </Typography>
             
             {profileInfo.organization && (
@@ -488,7 +522,7 @@ const Profile = () => {
                 mt: 2,
                 p: 1,
                 borderRadius: 1,
-                backgroundColor: user?.role === 'admin' ? 'error.main' : 'secondary.main',
+                backgroundColor: isAdmin ? 'error.main' : 'secondary.main',
                 color: 'white',
                 fontWeight: 'bold',
                 textTransform: 'uppercase',
@@ -496,7 +530,7 @@ const Profile = () => {
                 letterSpacing: 1
               }}
             >
-              {user?.role || 'User'}
+              {isAdmin ? 'Admin' : (userRole || 'Reviewer')}
             </Box>
             
             <Button
@@ -525,7 +559,7 @@ const Profile = () => {
         </Grid>
         
         {/* Profile Info Card */}
-        <Grid item xs={12} md={8}>
+        <Grid lg={8} sm={12}>
           <Card 
             elevation={3} 
             sx={{ 
@@ -547,7 +581,7 @@ const Profile = () => {
               <Box sx={{ p: 3 }}>
                 <Grid container spacing={3}>
                   {/* Name */}
-                  <Grid item xs={12} sm={6}>
+                  <Grid lg={6} sm={12}>
                     <TextField
                       fullWidth
                       label="Full Name"
@@ -573,7 +607,7 @@ const Profile = () => {
                   </Grid>
                   
                   {/* Phone */}
-                  <Grid item xs={12} sm={6}>
+                  <Grid lg={6} sm={12}>
                     <TextField
                       fullWidth
                       label="Phone Number"
@@ -599,7 +633,7 @@ const Profile = () => {
                   </Grid>
                   
                   {/* Job Title */}
-                  <Grid item xs={12} sm={6}>
+                  <Grid lg={6} sm={12}>
                     <TextField
                       fullWidth
                       label="Job Title"
@@ -618,7 +652,7 @@ const Profile = () => {
                   </Grid>
                   
                   {/* Department */}
-                  <Grid item xs={12} sm={6}>
+                  <Grid lg={6} sm={12}>
                     <TextField
                       fullWidth
                       label="Department"
@@ -637,7 +671,7 @@ const Profile = () => {
                   </Grid>
                   
                   {/* Organization */}
-                  <Grid item xs={12} sm={6}>
+                  <Grid lg={6} sm={12}>
                     <TextField
                       fullWidth
                       label="Organization"
@@ -672,7 +706,7 @@ const Profile = () => {
                   </Typography>
                   
                   <Grid container spacing={2}>
-                    <Grid item xs={12} sm={6}>
+                    <Grid lg={6} sm={12}>
                       <TextField
                         fullWidth
                         label="Email"
@@ -686,7 +720,7 @@ const Profile = () => {
                       />
                     </Grid>
                     
-                    <Grid item xs={12} sm={6}>
+                    <Grid lg={6} sm={12}>
                       <TextField
                         fullWidth
                         label="Account Type"

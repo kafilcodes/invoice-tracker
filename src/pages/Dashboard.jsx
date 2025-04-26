@@ -64,18 +64,19 @@ import {
   ArrowDownward as ArrowDownwardIcon,
   Schedule as ScheduleIcon,
   Group as GroupIcon,
-  BarChart as BarChartIcon
+  BarChart as BarChartIcon,
+  Email as EmailIcon,
+  Phone as PhoneIcon,
+  Language as LanguageIcon,
+  LocationOn as LocationOnIcon
 } from '@mui/icons-material';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend } from 'recharts';
-import realtimeDb from '../firebase/realtimeDatabase';
+import realtimeDb from '../firebase/realtimeDb';
 import { selectUser } from '../redux/slices/authSlice';
 import ConfirmationDialog from '../components/common/ConfirmationDialog';
 import Toast from '../components/common/Toast';
 import billLogo from '/bill.png';
 import { format } from 'date-fns';
-
-// Define colors for pie chart
-const pieColors = ['#4caf50', '#ff9800', '#f44336', '#2196f3', '#9c27b0'];
+import databaseService from '../firebase/database';
 
 // Helper function to capitalize status
 const capitalizeStatus = (status) => {
@@ -374,6 +375,7 @@ const Dashboard = () => {
     dailyProcessed: 0,
     monthlyProcessed: 0
   });
+  const [organizationData, setOrganizationData] = useState(null);
   const [confirmDialog, setConfirmDialog] = useState({
     open: false,
     title: '',
@@ -390,44 +392,81 @@ const Dashboard = () => {
     title: '',
     severity: 'success'
   });
-  const [chartView, setChartView] = useState('count');
+
+  // Fetch organization data based on user's organization
+  useEffect(() => {
+    const fetchOrganizationData = async () => {
+      if (!user?.organization) return;
+      
+      try {
+        const orgResult = await databaseService.getData(`organizations/${user.organization}`);
+        
+        if (orgResult.success && orgResult.data) {
+          setOrganizationData(orgResult.data);
+        }
+      } catch (error) {
+        console.error('Error fetching organization data:', error);
+      }
+    };
+    
+    fetchOrganizationData();
+  }, [user]);
 
   useEffect(() => {
-    if (!userId) return;
-    
     const fetchInvoices = async () => {
       try {
         setLoading(true);
         
-        // Use realtimeDb instead of Firestore
-        const response = await realtimeDb.getData('invoices');
+        // First, attempt to get organization ID from user object or fetch it
+        let organizationId = user?.organization;
         
-        if (response.success && response.data) {
-          // Convert object to array
-          const invoicesArray = Object.values(response.data);
+        if (!organizationId && user?.uid) {
+          // Get user's organization from database
+          const userDataResult = await databaseService.getData(`users/${user.uid}`);
           
-          // All users can see all invoices from their organization
-          const filteredInvoices = invoicesArray;
+          if (userDataResult.success && userDataResult.data?.organization) {
+            organizationId = userDataResult.data.organization;
+          } else {
+            setError('Failed to get organization information');
+            setLoading(false);
+            return;
+          }
+        }
+        
+        if (organizationId) {
+          // Get invoices for this organization
+          const invoicesResult = await databaseService.getData(`organizations/${organizationId}/invoices`);
           
-          // Calculate counts
-          const pending = filteredInvoices.filter(invoice => invoice.status === 'pending').length;
-          const approved = filteredInvoices.filter(invoice => invoice.status === 'approved').length;
-          const rejected = filteredInvoices.filter(invoice => invoice.status === 'rejected').length;
-          
-          // Calculate total amount
-          const amount = filteredInvoices.reduce((sum, invoice) => sum + (parseFloat(invoice.amount) || 0), 0);
-          
-          // Update state
-          setInvoices(filteredInvoices);
-          setStats({
-            totalInvoices: filteredInvoices.length,
-            approved,
-            rejected,
-            pending,
-            totalAmount: amount.toFixed(2),
-            dailyProcessed: 0,
-            monthlyProcessed: 0
-          });
+          if (invoicesResult.success && invoicesResult.data) {
+            // Convert object to array with _id field
+            const invoicesArray = Object.entries(invoicesResult.data).map(([id, data]) => ({
+              _id: id,
+              ...data
+            }));
+            
+            // Calculate counts
+            const pending = invoicesArray.filter(invoice => invoice.status === 'pending').length;
+            const approved = invoicesArray.filter(invoice => invoice.status === 'approved').length;
+            const rejected = invoicesArray.filter(invoice => invoice.status === 'rejected').length;
+            
+            // Update state
+            setInvoices(invoicesArray);
+            setAssignedInvoices(invoicesArray);
+            setStats({
+              totalInvoices: invoicesArray.length,
+              approved,
+              rejected,
+              pending,
+              totalAmount: invoicesArray.reduce((sum, invoice) => sum + (parseFloat(invoice.amount) || 0), 0).toFixed(2),
+              dailyProcessed: 0,
+              monthlyProcessed: 0
+            });
+            
+            // Get recent activity
+            fetchRecentActivity(organizationId);
+          }
+        } else {
+          setError('Failed to get organization information');
         }
       } catch (error) {
         console.error('Error in fetchInvoices:', error);
@@ -437,66 +476,123 @@ const Dashboard = () => {
       }
     };
     
-    fetchInvoices();
-    
-    // Subscribe to real-time updates
-    const unsubscribe = realtimeDb.subscribeToData('invoices', data => {
-      if (data) {
-        const invoicesData = Object.values(data);
-        setInvoices(invoicesData);
+    // Set up realtime listener for invoices that works for all users including reviewers
+    const setupRealtimeListener = async () => {
+      try {
+        // First, attempt to get organization ID from user object
+        let organizationId = user?.organization;
         
-        // Make all invoices available to users in the same organization
-        setAssignedInvoices(invoicesData);
+        // If not available, fetch from database
+        if (!organizationId && user?.uid) {
+          const userDataResult = await databaseService.getData(`users/${user.uid}`);
+          if (userDataResult.success && userDataResult.data?.organization) {
+            organizationId = userDataResult.data.organization;
+          } else {
+            console.error('Failed to get organization ID for real-time updates');
+            return null;
+          }
+        }
         
-        // Get recent activity
-        const sortedByDate = [...invoicesData]
-          .filter(invoice => invoice) // Filter out null/undefined values
-          .sort((a, b) => 
-            (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0)
-          );
-        setRecentActivity(sortedByDate.slice(0, 5));
-        
-        // Update statistics
-        const approved = invoicesData.filter(inv => inv && inv.status === 'approved').length;
-        const rejected = invoicesData.filter(inv => inv && inv.status === 'rejected').length;
-        const pending = invoicesData.filter(inv => inv && inv.status === 'pending').length;
-        const totalAmount = invoicesData
-          .filter(inv => inv) // Only process valid invoices
-          .reduce((sum, inv) => sum + (parseFloat(inv.amount) || 0), 0);
-        
-        // Calculate daily and monthly processed
-        const now = new Date();
-        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-        const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
-        
-        const dailyProcessed = invoicesData.filter(inv => 
-          inv && 
-          (inv.updatedAt || 0) >= today && 
-          (inv.status === 'approved' || inv.status === 'rejected')
-        ).length;
-        
-        const monthlyProcessed = invoicesData.filter(inv => 
-          inv &&
-          (inv.updatedAt || 0) >= thisMonth && 
-          (inv.status === 'approved' || inv.status === 'rejected')
-        ).length;
-        
-        setStats({
-          totalInvoices: invoicesData.length,
-          approved,
-          rejected,
-          pending,
-          totalAmount: totalAmount.toFixed(2),
-          dailyProcessed,
-          monthlyProcessed
-        });
+        if (organizationId) {
+          // Subscribe to real-time updates for this organization's invoices
+          return realtimeDb.subscribeToData(`organizations/${organizationId}/invoices`, data => {
+            if (data) {
+              // Convert object to array with _id field
+              const invoicesArray = Object.entries(data).map(([id, invoiceData]) => ({
+                _id: id,
+                ...invoiceData
+              }));
+              
+              setInvoices(invoicesArray);
+              setAssignedInvoices(invoicesArray);
+              
+              // Update statistics
+              const approved = invoicesArray.filter(inv => inv && inv.status === 'approved').length;
+              const rejected = invoicesArray.filter(inv => inv && inv.status === 'rejected').length;
+              const pending = invoicesArray.filter(inv => inv && inv.status === 'pending').length;
+              
+              // Calculate daily and monthly processed
+              const now = new Date();
+              const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+              const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+              
+              const dailyProcessed = invoicesArray.filter(inv => 
+                inv && 
+                (inv.updatedAt || 0) >= today && 
+                (inv.status === 'approved' || inv.status === 'rejected')
+              ).length;
+              
+              const monthlyProcessed = invoicesArray.filter(inv => 
+                inv &&
+                (inv.updatedAt || 0) >= thisMonth && 
+                (inv.status === 'approved' || inv.status === 'rejected')
+              ).length;
+              
+              setStats({
+                totalInvoices: invoicesArray.length,
+                approved,
+                rejected,
+                pending,
+                totalAmount: invoicesArray.reduce((sum, inv) => sum + (parseFloat(inv.amount) || 0), 0).toFixed(2),
+                dailyProcessed,
+                monthlyProcessed
+              });
+              
+              // Also update the activity logs when invoice data changes
+              fetchRecentActivity(organizationId);
+            }
+          });
+        }
+        return null;
+      } catch (error) {
+        console.error('Error setting up real-time listener:', error);
+        return null;
       }
-    });
-    
-    return () => {
-      unsubscribe();
     };
-  }, [userId]);
+    
+    if (user?.uid) {
+      fetchInvoices();
+      
+      const unsubscribePromise = setupRealtimeListener();
+      
+      // Cleanup function
+      return () => {
+        unsubscribePromise.then(unsubscribe => {
+          if (unsubscribe) unsubscribe();
+        });
+      };
+    }
+  }, [user]);
+
+  const fetchRecentActivity = async (organizationId) => {
+    if (!organizationId) return;
+    
+    try {
+      // Fetch activity logs for this organization
+      const activityResult = await databaseService.getData(`organizations/${organizationId}/activity`);
+      
+      if (activityResult.success && activityResult.data) {
+        // Convert to array and sort by timestamp (newest first)
+        const logsArray = Object.entries(activityResult.data)
+          .map(([id, data]) => ({
+            _id: id,
+            ...data
+          }))
+          .filter(activity => activity !== null && activity !== undefined)
+          .sort((a, b) => {
+            // Handle server timestamps which might be objects
+            const timestampA = typeof a.timestamp === 'object' ? a.timestamp?.seconds * 1000 : a.timestamp;
+            const timestampB = typeof b.timestamp === 'object' ? b.timestamp?.seconds * 1000 : b.timestamp;
+            return (timestampB || 0) - (timestampA || 0);
+          })
+          .slice(0, 5); // Get only the 5 most recent
+        
+        setRecentActivity(logsArray);
+      }
+    } catch (error) {
+      console.error('Error fetching recent activity:', error);
+    }
+  };
 
   // Filtered invoices
   const filteredInvoices = useMemo(() => {
@@ -685,30 +781,6 @@ const Dashboard = () => {
     }
   };
 
-  const fetchRecentActivity = async () => {
-    try {
-      // Fetch recent activity logs from Realtime Database
-      const response = await realtimeDb.getData('activityLogs');
-      
-      if (response.success && response.data) {
-        // Convert to array and sort by timestamp (newest first)
-        const logsArray = Object.values(response.data)
-          .filter(activity => activity !== null && activity !== undefined) // Filter out null/undefined activities
-          .sort((a, b) => {
-            // Handle server timestamps which might be objects
-            const timestampA = typeof a.timestamp === 'object' ? a.timestamp?.seconds * 1000 : a.timestamp;
-            const timestampB = typeof b.timestamp === 'object' ? b.timestamp?.seconds * 1000 : b.timestamp;
-            return (timestampB || 0) - (timestampA || 0);
-          })
-          .slice(0, 5); // Get only the 5 most recent
-        
-        setRecentActivity(logsArray);
-      }
-    } catch (error) {
-      console.error('Error fetching recent activity:', error);
-    }
-  };
-
   // Format timestamp
   const formatDate = (timestamp) => {
     if (!timestamp) return 'Unknown date';
@@ -721,81 +793,6 @@ const Dashboard = () => {
     }).format(date);
   };
 
-  // Data for status distribution chart
-  const statusDistributionData = useMemo(() => {
-    if (!invoices || invoices.length === 0) return [];
-    
-    const statuses = invoices.reduce((acc, invoice) => {
-      // Add null check for invoice.status
-      const status = invoice?.status || 'Unknown';
-      if (!acc[status]) {
-        acc[status] = 0;
-      }
-      acc[status]++;
-      return acc;
-    }, {});
-    
-    return Object.keys(statuses).map(status => ({
-      name: status.charAt(0).toUpperCase() + status.slice(1),
-      value: statuses[status]
-    }));
-  }, [invoices]);
-
-  // Data for monthly trends chart
-  const monthlyTrendsData = useMemo(() => {
-    if (!invoices || invoices.length === 0) return [];
-    
-    const lastSixMonths = Array.from({ length: 6 }, (_, i) => {
-      const date = new Date();
-      date.setMonth(date.getMonth() - i);
-    return {
-        month: date.toLocaleString('default', { month: 'short' }),
-        year: date.getFullYear(),
-        timestamp: date.getTime()
-      };
-    }).reverse();
-    
-    const monthlyData = lastSixMonths.map(monthData => {
-      const startOfMonth = new Date(monthData.year, new Date().getMonth() - (5 - lastSixMonths.indexOf(monthData)), 1);
-      const endOfMonth = new Date(monthData.year, new Date().getMonth() - (5 - lastSixMonths.indexOf(monthData)) + 1, 0);
-      
-      const monthInvoices = invoices.filter(invoice => {
-        // Add null check for invoice.createdAt
-        if (!invoice || !invoice.createdAt) return false;
-        
-        const createdAt = invoice.createdAt.toDate ? invoice.createdAt.toDate() : new Date(invoice.createdAt);
-        return createdAt >= startOfMonth && createdAt <= endOfMonth;
-      });
-      
-      const approved = monthInvoices.filter(invoice => invoice?.status === 'approved').length;
-      const rejected = monthInvoices.filter(invoice => invoice?.status === 'rejected').length;
-      const pending = monthInvoices.filter(invoice => invoice?.status === 'pending').length;
-      
-      // Calculate total amount for each status if needed for amount view
-      const approvedAmount = monthInvoices
-        .filter(invoice => invoice?.status === 'approved')
-        .reduce((sum, invoice) => sum + (Number(invoice?.amount) || 0), 0);
-      
-      const rejectedAmount = monthInvoices
-        .filter(invoice => invoice?.status === 'rejected')
-        .reduce((sum, invoice) => sum + (Number(invoice?.amount) || 0), 0);
-      
-      const pendingAmount = monthInvoices
-        .filter(invoice => invoice?.status === 'pending')
-        .reduce((sum, invoice) => sum + (Number(invoice?.amount) || 0), 0);
-      
-      return {
-        name: monthData.month,
-        approved: chartView === 'amount' ? approvedAmount : approved,
-        rejected: chartView === 'amount' ? rejectedAmount : rejected,
-        pending: chartView === 'amount' ? pendingAmount : pending,
-        month: `${monthData.month} ${monthData.year}`
-      };
-    });
-    
-    return monthlyData;
-  }, [invoices, chartView]);
-
   const handleCloseToast = (event, reason) => {
     if (reason === 'clickaway') {
       return;
@@ -806,11 +803,7 @@ const Dashboard = () => {
     });
   };
 
-  const handleChartViewChange = (event, newValue) => {
-    setChartView(newValue);
-  };
-
-    return (
+  return (
     <Box sx={{ flexGrow: 1, p: { xs: 2, md: 3 }, width: '100%' }}>
       {loading ? (
         <DashboardSkeleton />
@@ -898,6 +891,176 @@ const Dashboard = () => {
               </Box>
             </Paper>
           </motion.div>
+
+          {/* Organization Info Section */}
+          {organizationData && (
+            <motion.div variants={itemVariants}>
+              <Paper 
+                elevation={2}
+                sx={{ 
+                  p: 3, 
+                  mb: 4, 
+                  borderRadius: 2,
+                  boxShadow: theme.shadows[2]
+                }}
+              >
+                <Grid container spacing={3}>
+                  {/* Organization Logo and Name */}
+                  <Grid item xs={12} md={4} sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                    <Avatar 
+                      src={organizationData.logo} 
+                      alt={organizationData.name}
+                      sx={{ 
+                        width: 100, 
+                        height: 100, 
+                        mb: 2,
+                        boxShadow: theme.shadows[2],
+                        border: '3px solid',
+                        borderColor: 'primary.light'
+                      }}
+                    >
+                      {!organizationData.logo && <OrgIcon sx={{ fontSize: 50 }} />}
+                    </Avatar>
+                    <Typography variant="h6" fontWeight="bold" align="center" gutterBottom>
+                      {organizationData.name || 'Your Organization'}
+                    </Typography>
+                    {organizationData.description && (
+                      <Typography variant="body2" color="text.secondary" align="center" sx={{ mt: 1 }}>
+                        {organizationData.description}
+                      </Typography>
+                    )}
+                  </Grid>
+                  
+                  {/* Contact Details */}
+                  <Grid item xs={12} md={4}>
+                    <Typography variant="subtitle1" fontWeight="bold" sx={{ mb: 2, display: 'flex', alignItems: 'center' }}>
+                      <Box component="span" sx={{ 
+                        mr: 1, 
+                        bgcolor: 'primary.main', 
+                        width: 4, 
+                        height: 20, 
+                        display: 'inline-block', 
+                        borderRadius: 1 
+                      }}></Box>
+                      Contact Information
+                    </Typography>
+                    
+                    <Stack spacing={2}>
+                      {organizationData.email && (
+                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                          <Avatar sx={{ bgcolor: 'primary.light', mr: 2, width: 36, height: 36 }}>
+                            <EmailIcon fontSize="small" />
+                          </Avatar>
+                          <Box>
+                            <Typography variant="body2" color="text.secondary">Email</Typography>
+                            <Typography variant="body1">{organizationData.email}</Typography>
+                          </Box>
+                        </Box>
+                      )}
+                      
+                      {organizationData.phone && (
+                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                          <Avatar sx={{ bgcolor: 'primary.light', mr: 2, width: 36, height: 36 }}>
+                            <PhoneIcon fontSize="small" />
+                          </Avatar>
+                          <Box>
+                            <Typography variant="body2" color="text.secondary">Phone</Typography>
+                            <Typography variant="body1">{organizationData.phone}</Typography>
+                          </Box>
+                        </Box>
+                      )}
+                      
+                      {organizationData.website && (
+                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                          <Avatar sx={{ bgcolor: 'primary.light', mr: 2, width: 36, height: 36 }}>
+                            <LanguageIcon fontSize="small" />
+                          </Avatar>
+                          <Box>
+                            <Typography variant="body2" color="text.secondary">Website</Typography>
+                            <Typography variant="body1">
+                              <Button 
+                                href={organizationData.website} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                sx={{ p: 0, minWidth: 'auto', textTransform: 'none' }}
+                              >
+                                {organizationData.website}
+                              </Button>
+                            </Typography>
+                          </Box>
+                        </Box>
+                      )}
+                    </Stack>
+                  </Grid>
+                  
+                  {/* Address Details */}
+                  <Grid item xs={12} md={4}>
+                    <Typography variant="subtitle1" fontWeight="bold" sx={{ mb: 2, display: 'flex', alignItems: 'center' }}>
+                      <Box component="span" sx={{ 
+                        mr: 1, 
+                        bgcolor: 'primary.main', 
+                        width: 4, 
+                        height: 20, 
+                        display: 'inline-block', 
+                        borderRadius: 1 
+                      }}></Box>
+                      Address Information
+                    </Typography>
+                    
+                    {organizationData.address && (
+                      <Box sx={{ display: 'flex', mb: 2 }}>
+                        <Avatar sx={{ bgcolor: 'primary.light', mr: 2, width: 36, height: 36 }}>
+                          <LocationOnIcon fontSize="small" />
+                        </Avatar>
+                        <Box>
+                          <Typography variant="body2" color="text.secondary">Address</Typography>
+                          <Typography variant="body1">{organizationData.address}</Typography>
+                        </Box>
+                      </Box>
+                    )}
+                    
+                    <Grid container spacing={2} sx={{ ml: 0 }}>
+                      {organizationData.city && (
+                        <Grid item xs={6}>
+                          <Box>
+                            <Typography variant="body2" color="text.secondary">City</Typography>
+                            <Typography variant="body1">{organizationData.city}</Typography>
+                          </Box>
+                        </Grid>
+                      )}
+                      
+                      {organizationData.state && (
+                        <Grid item xs={6}>
+                          <Box>
+                            <Typography variant="body2" color="text.secondary">State</Typography>
+                            <Typography variant="body1">{organizationData.state}</Typography>
+                          </Box>
+                        </Grid>
+                      )}
+                      
+                      {organizationData.zip && (
+                        <Grid item xs={6}>
+                          <Box>
+                            <Typography variant="body2" color="text.secondary">ZIP Code</Typography>
+                            <Typography variant="body1">{organizationData.zip}</Typography>
+                          </Box>
+                        </Grid>
+                      )}
+                      
+                      {organizationData.country && (
+                        <Grid item xs={6}>
+                          <Box>
+                            <Typography variant="body2" color="text.secondary">Country</Typography>
+                            <Typography variant="body1">{organizationData.country}</Typography>
+                          </Box>
+                        </Grid>
+                      )}
+                    </Grid>
+                  </Grid>
+                </Grid>
+              </Paper>
+            </motion.div>
+          )}
 
           {/* Statistics cards */}
           <Grid container spacing={3} mb={4}>
@@ -1107,152 +1270,6 @@ const Dashboard = () => {
                     />
             </Box>
           </Paper>
-              </motion.div>
-        </Grid>
-      </Grid>
-
-          {/* Charts */}
-          <Grid container spacing={3} sx={{ mb: 3 }}>
-            {/* Monthly Trends */}
-            <Grid item xs={12} lg={8}>
-              <motion.div variants={itemVariants}>
-                <Paper
-                  sx={{
-                    p: 3,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    borderRadius: 3,
-                    height: '100%'
-                  }}
-                  elevation={2}
-                >
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                    <Typography variant="h6" fontWeight="medium">
-                      Monthly Invoice Trends
-                    </Typography>
-                    <Box display="flex" alignItems="center">
-                      <ToggleButtonGroup
-                        value={chartView}
-                        exclusive
-                        onChange={handleChartViewChange}
-                        size="small"
-                      >
-                        <ToggleButton value="count" sx={{ px: 1.5 }}>
-                          Count
-                        </ToggleButton>
-                        <ToggleButton value="amount" sx={{ px: 1.5 }}>
-                          Amount
-                        </ToggleButton>
-                      </ToggleButtonGroup>
-              </Box>
-                  </Box>
-                  <Divider sx={{ mb: 2 }} />
-                  
-                  <Box sx={{ width: '100%', height: 300, position: 'relative' }}>
-                    {loading ? (
-                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
-                        <CircularProgress />
-                      </Box>
-                    ) : (
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart
-                          data={monthlyTrendsData}
-                          margin={{
-                            top: 5,
-                            right: 30,
-                            left: 20,
-                            bottom: 5,
-                          }}
-                        >
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="name" />
-                          <YAxis />
-                          <Tooltip 
-                            formatter={(value, name) => {
-                              if (chartView === 'amount') {
-                                return [`$${value}`, name];
-                              }
-                              return [value, name];
-                            }}
-                          />
-                          <Legend />
-                          <Bar 
-                            dataKey="approved" 
-                            name="Approved" 
-                            fill="#4caf50" 
-                            radius={[4, 4, 0, 0]}
-                          />
-                          <Bar 
-                            dataKey="pending" 
-                            name="Pending" 
-                            fill="#ff9800" 
-                            radius={[4, 4, 0, 0]}
-                          />
-                          <Bar 
-                            dataKey="rejected" 
-                            name="Rejected" 
-                            fill="#f44336" 
-                            radius={[4, 4, 0, 0]}
-                          />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    )}
-              </Box>
-                </Paper>
-              </motion.div>
-        </Grid>
-
-            {/* Status Distribution */}
-            <Grid item xs={12} lg={4}>
-              <motion.div variants={itemVariants}>
-                <Paper
-                      sx={{
-                    p: 3,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    borderRadius: 3,
-                    height: '100%'
-                  }}
-                  elevation={2}
-                >
-                  <Typography variant="h6" fontWeight="medium" gutterBottom>
-                    Status Distribution
-                          </Typography>
-                  <Divider sx={{ mb: 2 }} />
-                  
-                  <Box sx={{ width: '100%', height: 300, position: 'relative' }}>
-                    {loading ? (
-                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
-                        <CircularProgress />
-                      </Box>
-                    ) : statusDistributionData.length === 0 ? (
-                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
-                        <Typography color="text.secondary">No data available</Typography>
-                      </Box>
-                    ) : (
-                      <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                          <Pie
-                            data={statusDistributionData}
-                            cx="50%"
-                            cy="50%"
-                            labelLine={false}
-                            outerRadius={80}
-                            fill="#8884d8"
-                            dataKey="value"
-                            label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                          >
-                            {statusDistributionData.map((entry, index) => (
-                              <Cell key={`cell-${index}`} fill={pieColors[index % pieColors.length]} />
-                            ))}
-                          </Pie>
-                          <Tooltip formatter={(value, name) => [`${value} invoices`, name]} />
-                          <Legend />
-                        </PieChart>
-                      </ResponsiveContainer>
-                    )}
-                  </Box>
-                </Paper>
               </motion.div>
         </Grid>
       </Grid>

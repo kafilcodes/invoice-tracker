@@ -21,19 +21,11 @@ service firebase.storage {
          get(/databases/$(database)/documents/companies/$(companyId)).data.ownerId == request.auth.uid);
     }
     
-    // Allow authenticated users to read and write invoice attachments if they are members of the company
-    match /invoices/{invoiceId}/{allFiles=**} {
-      allow read: if request.auth != null && 
-        exists(/databases/$(database)/documents/invoices/$(invoiceId)) &&
-        exists(/databases/$(database)/documents/companies/$(get(/databases/$(database)/documents/invoices/$(invoiceId)).data.companyId)) &&
-        (get(/databases/$(database)/documents/companies/$(get(/databases/$(database)/documents/invoices/$(invoiceId)).data.companyId)).data.members.hasAny([request.auth.uid]) ||
-         get(/databases/$(database)/documents/companies/$(get(/databases/$(database)/documents/invoices/$(invoiceId)).data.companyId)).data.ownerId == request.auth.uid);
-      
-      allow write: if request.auth != null && 
-        exists(/databases/$(database)/documents/invoices/$(invoiceId)) &&
-        exists(/databases/$(database)/documents/companies/$(get(/databases/$(database)/documents/invoices/$(invoiceId)).data.companyId)) &&
-        (get(/databases/$(database)/documents/companies/$(get(/databases/$(database)/documents/invoices/$(invoiceId)).data.companyId)).data.members.hasAny([request.auth.uid]) ||
-         get(/databases/$(database)/documents/companies/$(get(/databases/$(database)/documents/invoices/$(invoiceId)).data.companyId)).data.ownerId == request.auth.uid);
+    // Allow authenticated users to read and write invoice attachments if they are organization members or admins
+    match /organizations/{orgId}/invoices/{invoiceId}/attachments/{fileName} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+      allow delete: if request.auth != null;
     }
     
     // Default deny

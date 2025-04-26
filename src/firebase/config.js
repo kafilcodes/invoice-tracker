@@ -67,35 +67,22 @@ if (!firebaseConfig.databaseURL) {
   firebaseConfig.databaseURL = "https://invoice-tracker-962af-default-rtdb.firebaseio.com";
 }
 
-// Initialize variables outside the try block
-let app, auth, storage, rtdb;
+// Log Firebase initialization
+console.log('Initializing Firebase with config:', firebaseConfig);
 
 // Initialize Firebase
-try {
-  console.log('Initializing Firebase with config:', Object.keys(firebaseConfig).reduce((acc, key) => {
-    acc[key] = key === 'apiKey' ? '[HIDDEN]' : Boolean(firebaseConfig[key]) ? 'Set' : 'Missing';
-    return acc;
-  }, {}));
-  
-  app = initializeApp(firebaseConfig);
-  auth = getAuth(app);
-  rtdb = getDatabase(app);
-  storage = getStorage(app);
+const app = initializeApp(firebaseConfig);
+console.log('Firebase app initialized:', app.name);
 
-  console.log('Firebase initialized successfully');
-  console.log(`Realtime Database URL: ${rtdb.app.options.databaseURL}`);
-} catch (error) {
-  console.error('Firebase initialization error:', error);
-  
-  // Create placeholder exports to prevent crashes
-  app = { name: 'failed-initialization' };
-  auth = { currentUser: null, onAuthStateChanged: () => () => {} };
-  rtdb = {};
-  storage = {};
-  
-  // Don't throw error here to allow app to continue loading
-  console.warn('Using mock Firebase objects due to initialization failure');
-}
+// Initialize services
+const auth = getAuth(app);
+console.log('Firebase Auth initialized');
+
+const rtdb = getDatabase(app);
+console.log('Firebase Realtime Database initialized');
+
+const storage = getStorage(app);
+console.log('Firebase Storage initialized');
 
 // Export all variables outside the try/catch
 export { auth, rtdb, storage, app }; 
