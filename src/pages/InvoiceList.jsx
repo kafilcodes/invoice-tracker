@@ -572,9 +572,23 @@ const DesktopInvoiceList = ({
   const renderStatusActions = (invoice) => {
     const currentStatus = invoice.status || 'pending';
     
-    // Only show status actions if user has appropriate role (admin or reviewer)
-    if (!(user?.role === 'admin' || user?.role === 'reviewer')) {
-      return null;
+    // Improve role checking to be more resilient
+    if (!user || (!user.role && !user.uid)) {
+      console.error("User data missing or incomplete:", user);
+      return <Typography variant="caption" color="error">Loading access...</Typography>;
+    }
+    
+    // Safely check user role to handle different data structures
+    const userRole = user?.role?.toLowerCase?.() || "";
+    const isAdmin = userRole === 'admin';
+    const isReviewer = userRole === 'reviewer';
+    
+    // Log role for debugging
+    console.log("User role for action rendering:", userRole, isAdmin, isReviewer);
+    
+    // Only show status actions if user has appropriate role
+    if (!(isAdmin || isReviewer)) {
+      return <Typography variant="caption" color="text.secondary">No permissions</Typography>;
     }
     
     return (
@@ -817,8 +831,8 @@ const DesktopInvoiceList = ({
                         }}
                       />
                       
-                      {/* Add Status Actions Directly Below Status - Only for admin, NOT for reviewers */}
-                      {user?.role === 'admin' && (
+                      {/* Add Status Actions Directly Below Status - Show for both admin and reviewer roles */}
+                      {(user?.role === 'admin' || user?.role === 'reviewer') && (
                         <Box sx={{ 
                           display: 'flex', 
                           gap: 0.5, 
@@ -1031,18 +1045,37 @@ const InvoiceList = () => {
         // Get organization ID, either from user object or by fetching user data
         let organizationId = user?.organization;
         
+        // Add debug logging for user object
+        console.log("Current user data:", {
+          uid: user?.uid,
+          role: user?.role,
+          organization: organizationId,
+        });
+        
         // If no organization ID is available in the user object, fetch it
         if (!organizationId) {
           const userDataResult = await databaseService.getData(`users/${user.uid}`);
+          console.log("Fetched user data:", userDataResult);
+          
           if (!userDataResult.success || !userDataResult.data?.organization) {
             throw new Error('Unable to determine user organization');
           }
           
           // Store organization ID in local variable instead of modifying user object
           organizationId = userDataResult.data.organization;
+          
+          // Update user role if missing in Redux state but present in database
+          if (!user.role && userDataResult.data.role) {
+            console.log("Setting user role from database:", userDataResult.data.role);
+            // We can't directly update Redux here, but we can store the role in localStorage
+            // for debugging purposes
+            try {
+              localStorage.setItem('debug_user_role', userDataResult.data.role);
+            } catch (e) {
+              console.error("Could not save role to localStorage:", e);
+            }
+          }
         }
-        
-        console.log("Fetching invoices for organization:", organizationId);
         
         // Fetch invoices from the organization path
         const invoicesResult = await databaseService.getData(`organizations/${organizationId}/invoices`);
@@ -1093,11 +1126,9 @@ const InvoiceList = () => {
           // Update state
           setAllInvoices(paginatedInvoices);
           setHasMore(startIndex + limit < allInvoicesFromOrg.length);
-          console.log("Invoices loaded successfully:", paginatedInvoices.length, "of", allInvoicesFromOrg.length);
         } else {
           setAllInvoices([]);
           setHasMore(false);
-          console.log("No invoices found for organization");
         }
       } catch (error) {
         console.error('Error fetching invoices:', error);
@@ -1335,16 +1366,11 @@ const InvoiceList = () => {
 
   // Function to update invoice status
   const handleUpdateStatus = (invoice, newStatus) => {
-    console.log("Update status called:", invoice._id, "New status:", newStatus);
-    console.log("User role:", user?.role); // Debug log user role
-    
     handleOpenConfirmDialog(
       'Update Status',
       `Are you sure you want to update the status of invoice ${invoice.invoiceNumber} to ${newStatus}?`,
       async () => {
         try {
-          console.log("Confirming status update to:", newStatus);
-          
           // First, update the invoice in the current state to avoid blank screen
           const updatedInvoice = {...invoice, status: newStatus};
           const updatedInvoices = allInvoices.map(inv => 

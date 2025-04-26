@@ -19,7 +19,6 @@ const InvoiceCreate = () => {
   // Handle form submission
   const handleSubmit = async (formData) => {
     try {
-      console.log('[INVOKE] Starting invoice creation process');
       setProcessingState('Preparing invoice data...');
       
       // Dispatch the createInvoice action with the form data
@@ -39,7 +38,6 @@ const InvoiceCreate = () => {
       
       // Check if the action was fulfilled or rejected
       if (createInvoice.fulfilled.match(resultAction)) {
-        console.log('[SUCCESS] Invoice created successfully:', resultAction.payload);
         setSnackbar({
           open: true,
           message: 'Invoice created successfully!',

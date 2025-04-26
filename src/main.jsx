@@ -27,7 +27,6 @@ window.addEventListener('error', (event) => {
           key.includes('token') ||
           key.includes('auth')
         )) {
-          console.log(`Removing potentially corrupted token: ${key}`);
           localStorage.removeItem(key);
         }
       }
@@ -37,16 +36,9 @@ window.addEventListener('error', (event) => {
   }
 });
 
-// Track application initialization
-console.log('Application initialization started');
-
 // Import Firebase initialization module directly
 // This will trigger the initialization
 import './firebase/firebaseInit';
-
-// Log environment and initialization status
-console.log('Environment:', import.meta.env.MODE);
-console.log('Firebase Auth Initialization complete');
 
 // Create root element
 const rootElement = document.getElementById('root');
@@ -54,7 +46,6 @@ const root = createRoot(rootElement);
 
 // Add a global recovery function
 window.resetFirebase = () => {
-  console.log('Attempting to reset Firebase state...');
   localStorage.clear();
   sessionStorage.clear();
   
@@ -63,14 +54,12 @@ window.resetFirebase = () => {
     if (window.indexedDB) {
       ['firebaseLocalStorageDb', 'firebaseLocalStorage'].forEach((dbName) => {
         window.indexedDB.deleteDatabase(dbName);
-        console.log(`Deleted IndexedDB database: ${dbName}`);
       });
     }
   } catch (dbError) {
     console.error('Failed to clear IndexedDB databases:', dbError);
   }
   
-  console.log('Firebase state reset, reloading page...');
   window.location.reload();
 };
 

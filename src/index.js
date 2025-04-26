@@ -23,9 +23,6 @@ axios.interceptors.request.use(
   }
 );
 
-// Get Google Client ID from environment for debugging purposes
-console.log('Google Client ID:', import.meta.env.VITE_GOOGLE_CLIENT_ID);
-
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
   <React.StrictMode>

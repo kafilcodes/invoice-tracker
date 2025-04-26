@@ -20,12 +20,6 @@ import InvoiceList from './pages/InvoiceList';
 import InvoiceDetail from './pages/InvoiceDetail';
 import NotFound from './pages/NotFound';
 import Profile from './pages/Profile';
-import FirebaseDiagnostic from './pages/FirebaseDiagnostic';
-import EnvDebugger from './pages/EnvDebugger';
-import FirebaseRecovery from './components/FirebaseRecovery';
-import Cleanup from './pages/Cleanup';
-import RealtimeDatabaseTest from './pages/RealtimeDatabaseTest';
-import FirebaseAuthTest from './pages/FirebaseAuthTest';
 import Settings from './pages/Settings';
 import ActivityLogs from './pages/admin/ActivityLogs';
 import NotificationsPage from './pages/Notifications';
@@ -48,27 +42,15 @@ import { authUnsubscribe } from './firebase/firebaseInit';
 // Fallback loading component for lazy-loaded routes
 const LoadingFallback = () => <Loader />;
 
-// Create a diagnostic page that includes diagnostic components
-const DiagnosticPage = () => (
-  <div>
-    <FirebaseDiagnostic />
-    <RealtimeDatabaseTest />
-    <EnvDebugger />
-  </div>
-);
-
 function App() {
   const { darkMode } = useSelector((state) => state.ui);
   const { user } = useSelector((state) => state.auth);
   
   // Ensure cleanup on app unmount
   useEffect(() => {
-    console.log('App mounted, Firebase auth already initialized via firebaseInit');
-    
     return () => {
       // Make sure to clean up any auth listeners when the app unmounts
       if (typeof authUnsubscribe === 'function') {
-        console.log('Cleaning up Firebase auth listener on App unmount');
         authUnsubscribe();
       }
     };
@@ -93,14 +75,6 @@ function App() {
                 <Route path="/" element={!user ? <Navigate to="/auth" /> : (
                   user.role === 'admin' ? <Navigate to="/admin/dashboard" /> : <Navigate to="/dashboard" />
                 )} />
-                
-                {/* Diagnostic page - accessible without login */}
-                <Route path="/firebase-diagnostic" element={<DiagnosticPage />} />
-                <Route path="/env-debug" element={<EnvDebugger />} />
-                <Route path="/auth-recovery" element={<FirebaseRecovery />} />
-                <Route path="/cleanup" element={<Cleanup />} />
-                <Route path="/realtime-test" element={<RealtimeDatabaseTest />} />
-                <Route path="/auth-test" element={<FirebaseAuthTest />} />
               </Route>
 
               {/* Admin routes */}
