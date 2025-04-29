@@ -397,7 +397,7 @@ const Dashboard = () => {
   useEffect(() => {
     const fetchOrganizationData = async () => {
       if (!user?.organization) return;
-      
+    
       try {
         const orgResult = await databaseService.getData(`organizations/${user.organization}`);
         
@@ -423,7 +423,7 @@ const Dashboard = () => {
         if (!organizationId && user?.uid) {
           // Get user's organization from database
           const userDataResult = await databaseService.getData(`users/${user.uid}`);
-          
+        
           if (userDataResult.success && userDataResult.data?.organization) {
             organizationId = userDataResult.data.organization;
           } else {
@@ -443,24 +443,24 @@ const Dashboard = () => {
               _id: id,
               ...data
             }));
-            
-            // Calculate counts
+          
+          // Calculate counts
             const pending = invoicesArray.filter(invoice => invoice.status === 'pending').length;
             const approved = invoicesArray.filter(invoice => invoice.status === 'approved').length;
             const rejected = invoicesArray.filter(invoice => invoice.status === 'rejected').length;
-            
-            // Update state
+          
+          // Update state
             setInvoices(invoicesArray);
             setAssignedInvoices(invoicesArray);
-            setStats({
+          setStats({
               totalInvoices: invoicesArray.length,
-              approved,
-              rejected,
-              pending,
+            approved,
+            rejected,
+            pending,
               totalAmount: invoicesArray.reduce((sum, invoice) => sum + (parseFloat(invoice.amount) || 0), 0).toFixed(2),
-              dailyProcessed: 0,
-              monthlyProcessed: 0
-            });
+            dailyProcessed: 0,
+            monthlyProcessed: 0
+          });
             
             // Get recent activity
             fetchRecentActivity(organizationId);
@@ -496,7 +496,7 @@ const Dashboard = () => {
         if (organizationId) {
           // Subscribe to real-time updates for this organization's invoices
           return realtimeDb.subscribeToData(`organizations/${organizationId}/invoices`, data => {
-            if (data) {
+      if (data) {
               // Convert object to array with _id field
               const invoicesArray = Object.entries(data).map(([id, invoiceData]) => ({
                 _id: id,
@@ -505,43 +505,43 @@ const Dashboard = () => {
               
               setInvoices(invoicesArray);
               setAssignedInvoices(invoicesArray);
-              
-              // Update statistics
+        
+        // Update statistics
               const approved = invoicesArray.filter(inv => inv && inv.status === 'approved').length;
               const rejected = invoicesArray.filter(inv => inv && inv.status === 'rejected').length;
               const pending = invoicesArray.filter(inv => inv && inv.status === 'pending').length;
-              
-              // Calculate daily and monthly processed
-              const now = new Date();
-              const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-              const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
-              
+        
+        // Calculate daily and monthly processed
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+        const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+        
               const dailyProcessed = invoicesArray.filter(inv => 
-                inv && 
-                (inv.updatedAt || 0) >= today && 
-                (inv.status === 'approved' || inv.status === 'rejected')
-              ).length;
-              
+          inv && 
+          (inv.updatedAt || 0) >= today && 
+          (inv.status === 'approved' || inv.status === 'rejected')
+        ).length;
+        
               const monthlyProcessed = invoicesArray.filter(inv => 
-                inv &&
-                (inv.updatedAt || 0) >= thisMonth && 
-                (inv.status === 'approved' || inv.status === 'rejected')
-              ).length;
-              
-              setStats({
+          inv &&
+          (inv.updatedAt || 0) >= thisMonth && 
+          (inv.status === 'approved' || inv.status === 'rejected')
+        ).length;
+        
+        setStats({
                 totalInvoices: invoicesArray.length,
-                approved,
-                rejected,
-                pending,
+          approved,
+          rejected,
+          pending,
                 totalAmount: invoicesArray.reduce((sum, inv) => sum + (parseFloat(inv.amount) || 0), 0).toFixed(2),
-                dailyProcessed,
-                monthlyProcessed
-              });
+          dailyProcessed,
+          monthlyProcessed
+        });
               
               // Also update the activity logs when invoice data changes
               fetchRecentActivity(organizationId);
-            }
-          });
+      }
+    });
         }
         return null;
       } catch (error) {
@@ -556,7 +556,7 @@ const Dashboard = () => {
       const unsubscribePromise = setupRealtimeListener();
       
       // Cleanup function
-      return () => {
+    return () => {
         unsubscribePromise.then(unsubscribe => {
           if (unsubscribe) unsubscribe();
         });
@@ -803,7 +803,7 @@ const Dashboard = () => {
     });
   };
 
-  return (
+    return (
     <Box sx={{ flexGrow: 1, p: { xs: 2, md: 3 }, width: '100%' }}>
       {loading ? (
         <DashboardSkeleton />

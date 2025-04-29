@@ -33,6 +33,10 @@ import PersonIcon from '@mui/icons-material/Person';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import BusinessIcon from '@mui/icons-material/Business';
 import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
+import Toast from '../components/common/Toast';
+import { debounce } from 'lodash';
+import realtimeDb from '../firebase/realtimeDb';
+import OrganizationSelector from '../components/auth/OrganizationSelector';
 
 // Animation variants
 const fadeIn = {
@@ -399,12 +403,43 @@ const LoginForm = memo(({ formData, onInputChange, onSubmit, errors, isLoading, 
 });
 
 // Create a stable register form component
-const RegisterForm = memo(({ formData, onInputChange, onSubmit, errors, isLoading, toggleMode, togglePassword, showPassword, toggleConfirmPassword, showConfirmPassword }) => {
+const RegisterForm = memo(({ 
+  formData, 
+  onInputChange, 
+  onSubmit, 
+  errors, 
+  isLoading, 
+  toggleMode, 
+  togglePassword, 
+  showPassword, 
+  toggleConfirmPassword, 
+  showConfirmPassword,
+  checkOrgExists,
+  isOrgSelector,
+  setIsOrgSelector 
+}) => {
   // Create stable refs for inputs to maintain focus
   const nameInputRef = useRef(null);
   const emailInputRef = useRef(null);
   const passwordInputRef = useRef(null);
   const confirmPasswordInputRef = useRef(null);
+  const roleSelectRef = useRef(null);
+
+  // Auto-focus on role select when form mounts
+  useEffect(() => {
+    // Use setTimeout to ensure the component is fully mounted
+    const timer = setTimeout(() => {
+      if (roleSelectRef.current) {
+        // Focus on the role select
+        const selectElement = roleSelectRef.current.querySelector('div[role="button"]');
+        if (selectElement) {
+          selectElement.focus();
+        }
+      }
+    }, 100);
+    
+    return () => clearTimeout(timer);
+  }, []);
 
   const passwordAdornment = useMemo(() => (
     <PasswordVisibilityToggle
@@ -419,6 +454,12 @@ const RegisterForm = memo(({ formData, onInputChange, onSubmit, errors, isLoadin
       togglePassword={toggleConfirmPassword}
     />
   ), [showConfirmPassword, toggleConfirmPassword]);
+
+  // Show organization selector for reviewers
+  const showOrgSelector = formData.role === 'reviewer' && isOrgSelector;
+  
+  // Check if role is selected to show the rest of the form
+  const isRoleSelected = !!formData.role;
 
   return (
     <motion.form 
@@ -469,25 +510,80 @@ const RegisterForm = memo(({ formData, onInputChange, onSubmit, errors, isLoadin
         </motion.div>
       )}
 
+      <motion.div
+        variants={slideUp}
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+      >
+        <Typography
+          variant="subtitle1"
+          align="center"
+          gutterBottom
+          sx={{
+            fontWeight: 600,
+            color: 'primary.main',
+            mb: 2,
+            fontFamily: '"Poppins", sans-serif'
+          }}
+        >
+          Please select your role to continue
+        </Typography>
+      </motion.div>
+
       <FormControl 
         fullWidth 
         margin="normal" 
-        sx={{ mb: 2 }}
+        sx={{ mb: 3 }}
         error={!!errors.role}
+        ref={roleSelectRef}
       >
-        <InputLabel id="role-select-label">Choose Role</InputLabel>
+        <InputLabel id="role-select-label">Choose Role *</InputLabel>
         <Select
           labelId="role-select-label"
           id="role-select"
           name="role"
           value={formData.role || ''}
-          onChange={(e) => onInputChange('role', e.target.value)}
-          label="Choose Role"
+          onChange={(e) => {
+            onInputChange('role', e.target.value);
+            // Clear organization when role changes
+            if (e.target.value === 'reviewer') {
+              setIsOrgSelector(true);
+            } else {
+              setIsOrgSelector(false);
+            }
+          }}
+          label="Choose Role *"
           startAdornment={
             <InputAdornment position="start">
-              <AdminPanelSettingsIcon />
+              <AdminPanelSettingsIcon 
+                sx={{ 
+                  color: errors.role 
+                    ? 'error.main' 
+                    : formData.role 
+                      ? 'primary.main' 
+                      : 'text.secondary',
+                }}
+              />
             </InputAdornment>
           }
+          sx={{
+            '& .MuiOutlinedInput-root': {
+              borderRadius: 1.5,
+              backgroundColor: 'rgba(255, 255, 255, 0.05)',
+              height: '50px',
+              borderWidth: errors.role ? 2 : 1,
+              borderColor: errors.role 
+                ? 'error.main' 
+                : formData.role 
+                  ? 'primary.main' 
+                  : 'rgba(255, 255, 255, 0.2)',
+              '&:hover': {
+                borderColor: errors.role 
+                  ? 'error.main' 
+                  : 'primary.main',
+              }
+            }
+          }}
         >
           <MenuItem value="">Select a role</MenuItem>
           <MenuItem value="reviewer">Reviewer</MenuItem>
@@ -498,73 +594,108 @@ const RegisterForm = memo(({ formData, onInputChange, onSubmit, errors, isLoadin
             {errors.role}
           </Typography>
         )}
+        {!isRoleSelected && !errors.role && (
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, ml: 2 }}>
+            You must select a role before continuing
+          </Typography>
+        )}
       </FormControl>
 
-      <FormTextField
-        ref={nameInputRef}
-        name="name"
-        label="Full Name"
-        value={formData.name}
-        onChange={onInputChange}
-        error={errors.name}
-        helperText={errors.name}
-        Icon={PersonIcon}
-      />
+      {/* Only show the rest of the form if a role is selected */}
+      {isRoleSelected && (
+        <motion.div
+          variants={slideUp}
+          initial={{ opacity: 0, height: 0 }}
+          animate={{ 
+            opacity: 1, 
+            height: 'auto',
+            transition: { 
+              type: 'spring',
+              stiffness: 300,
+              damping: 24,
+              duration: 0.4
+            }
+          }}
+        >
+          <FormTextField
+            ref={nameInputRef}
+            name="name"
+            label="Full Name"
+            value={formData.name}
+            onChange={onInputChange}
+            error={errors.name}
+            helperText={errors.name}
+            Icon={PersonIcon}
+          />
 
-      <FormTextField
-        name="organization"
-        label={formData.role === 'admin' ? "Create your organization, enter name" : "Organization Name"}
-        value={formData.organization}
-        onChange={onInputChange}
-        error={errors.organization}
-        helperText={formData.role === 'admin' 
-          ? "This will be your new organization's name" 
-          : "Employees of your organization must use same name (no typos) to register as reviewer"}
-        Icon={BusinessIcon}
-      />
+          {showOrgSelector ? (
+            <OrganizationSelector 
+              value={formData.organization} 
+              onChange={(value) => onInputChange('organization', value)} 
+            />
+          ) : (
+            <FormTextField
+              name="organization"
+              label={formData.role === 'admin' ? "Create your organization, enter name" : "Organization Name"}
+              value={formData.organization}
+              onChange={(name, value) => {
+                onInputChange(name, value);
+                if (formData.role === 'admin') {
+                  checkOrgExists(value);
+                }
+              }}
+              error={errors.organization}
+              helperText={formData.role === 'admin' 
+                ? errors.organization || "This will be your new organization's name" 
+                : "Employees of your organization must use same name (no typos) to register as reviewer"}
+              Icon={BusinessIcon}
+            />
+          )}
 
-      <FormTextField
-        ref={emailInputRef}
-        name="email"
-        label="Email Address"
-        value={formData.email}
-        onChange={onInputChange}
-        error={errors.email}
-        helperText={errors.email}
-        Icon={EmailIcon}
-      />
+          <FormTextField
+            ref={emailInputRef}
+            name="email"
+            label="Email Address"
+            value={formData.email}
+            onChange={onInputChange}
+            error={errors.email}
+            helperText={errors.email}
+            Icon={EmailIcon}
+          />
 
-      <FormTextField
-        ref={passwordInputRef}
-        name="password"
-        label="Password"
-        value={formData.password}
-        onChange={onInputChange}
-        error={errors.password}
-        helperText={errors.password}
-        type={showPassword ? 'text' : 'password'}
-        Icon={LockIcon}
-        endAdornment={passwordAdornment}
-      />
+          <FormTextField
+            ref={passwordInputRef}
+            name="password"
+            label="Password"
+            value={formData.password}
+            onChange={onInputChange}
+            error={errors.password}
+            helperText={errors.password}
+            type={showPassword ? 'text' : 'password'}
+            Icon={LockIcon}
+            endAdornment={passwordAdornment}
+          />
 
-      <FormTextField
-        ref={confirmPasswordInputRef}
-        name="password2"
-        label="Confirm Password"
-        value={formData.password2}
-        onChange={onInputChange}
-        error={errors.password2}
-        helperText={errors.password2}
-        type={showConfirmPassword ? 'text' : 'password'}
-        Icon={CheckCircleIcon}
-        endAdornment={confirmPasswordAdornment}
-      />
+          <FormTextField
+            ref={confirmPasswordInputRef}
+            name="password2"
+            label="Confirm Password"
+            value={formData.password2}
+            onChange={onInputChange}
+            error={errors.password2}
+            helperText={errors.password2}
+            type={showConfirmPassword ? 'text' : 'password'}
+            Icon={CheckCircleIcon}
+            endAdornment={confirmPasswordAdornment}
+          />
+        </motion.div>
+      )}
 
       <motion.div 
         variants={slideUp}
         whileHover={{ scale: 1.02 }}
         whileTap={{ scale: 0.98 }}
-        style={{ marginTop: '8px' }}
+        style={{ marginTop: isRoleSelected ? '8px' : '12px' }}
       >
         <Button
           type="submit"
@@ -574,7 +705,7 @@ const RegisterForm = memo(({ formData, onInputChange, onSubmit, errors, isLoadin
           disabled={isLoading}
           startIcon={isLoading ? 
             <CircularProgress size={20} color="inherit" /> : 
-            <HowToRegIcon sx={{ fontSize: '20px' }} />
+            isRoleSelected ? <HowToRegIcon sx={{ fontSize: '20px' }} /> : <AdminPanelSettingsIcon sx={{ fontSize: '20px' }} />
           }
           sx={{
             py: 1.5,
@@ -582,14 +713,18 @@ const RegisterForm = memo(({ formData, onInputChange, onSubmit, errors, isLoadin
             textTransform: 'none',
             fontWeight: 600,
             fontSize: '1rem',
-            background: 'linear-gradient(90deg, #10B981, #0EA5E9)',
+            background: isRoleSelected 
+              ? 'linear-gradient(90deg, #10B981, #0EA5E9)' 
+              : 'linear-gradient(90deg, #6366F1, #8B5CF6)',
             boxShadow: '0 10px 25px -3px rgba(16, 185, 129, 0.4)',
             position: 'relative',
             overflow: 'hidden',
             letterSpacing: '0.5px',
             fontFamily: '"Poppins", sans-serif',
             '&:hover': {
-              background: 'linear-gradient(90deg, #059669, #0284C7)',
+              background: isRoleSelected
+                ? 'linear-gradient(90deg, #059669, #0284C7)'
+                : 'linear-gradient(90deg, #4F46E5, #7C3AED)',
               boxShadow: '0 15px 30px -5px rgba(16, 185, 129, 0.5)',
               transform: 'translateY(-2px)',
             },
@@ -610,7 +745,12 @@ const RegisterForm = memo(({ formData, onInputChange, onSubmit, errors, isLoadin
             mb: 2
           }}
         >
-          {isLoading ? 'Creating Account...' : 'Create Account'}
+          {isLoading 
+            ? 'Creating Account...' 
+            : isRoleSelected 
+              ? 'Create Account' 
+              : 'Select Role to Continue'
+          }
         </Button>
       </motion.div>
 
@@ -656,7 +796,7 @@ const Logo = memo(({ isLogin }) => {
       initial={{ opacity: 0, y: -10 }}
       animate={{ opacity: 1, y: 0 }}
     >
-      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', mb: 3 }}>
+      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
         <motion.img 
           src="/bill.png" 
           alt="Invoice Tracker Logo"
@@ -668,10 +808,10 @@ const Logo = memo(({ isLogin }) => {
             duration: 2
           }}
           style={{ 
-            height: '90px', 
+            height: '140px', 
             width: 'auto',
-            filter: 'drop-shadow(0 0 15px rgba(59, 130, 246, 0.8))',
-            marginBottom: '12px'
+            filter: 'drop-shadow(0 0 20px rgba(59, 130, 246, 0.8))',
+            marginBottom: '16px'
           }} 
         />
         <motion.div
@@ -686,7 +826,7 @@ const Logo = memo(({ isLogin }) => {
             sx={{ 
               mb: 1, 
               fontWeight: 800,
-              fontSize: { xs: '1.8rem', sm: '2.2rem' },
+              fontSize: { xs: '2.2rem', sm: '2.6rem' },
               letterSpacing: '-0.025em',
               background: 'linear-gradient(90deg, #4F46E5, #EC4899)',
               WebkitBackgroundClip: 'text',
@@ -709,11 +849,11 @@ const Logo = memo(({ isLogin }) => {
             color="text.secondary" 
             align="center"
             sx={{ 
-              mb: 0.5,
               fontWeight: 500,
-              fontSize: { xs: '0.9rem', sm: '1rem' },
+              fontSize: { xs: '1rem', sm: '1.1rem' },
               fontFamily: '"Poppins", sans-serif',
-              opacity: 0.9
+              opacity: 0.9,
+              maxWidth: '320px'
             }}
           >
             {isLogin ? 'Sign in to your account to continue' : 'Create a new account to get started'}
@@ -900,6 +1040,15 @@ const Auth = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [errors, setErrors] = useState({});
+  const [isOrgSelector, setIsOrgSelector] = useState(false);
+  
+  // Toast state
+  const [toast, setToast] = useState({
+    open: false,
+    message: '',
+    title: '',
+    severity: 'info'
+  });
   
   const theme = useTheme();
   const navigate = useNavigate();
@@ -912,10 +1061,23 @@ const Auth = () => {
     if (isError) {
       console.error('Authentication error:', message);
       setErrors({ general: message });
+      // Show toast notification for auth errors
+      setToast({
+        open: true,
+        message: message || 'Authentication failed. Please try again.',
+        title: 'Error',
+        severity: 'error'
+      });
     }
 
     if (isSuccess || user) {
       console.log('Authentication successful, redirecting to dashboard');
+      setToast({
+        open: true,
+        message: 'Authentication successful!',
+        title: 'Success',
+        severity: 'success'
+      });
       navigate(user?.role === 'admin' ? '/admin/dashboard' : '/dashboard');
     }
 
@@ -925,7 +1087,20 @@ const Auth = () => {
   const toggleAuthMode = useCallback(() => {
     setIsLogin(prevState => !prevState);
     setErrors({});
-  }, []);
+    
+    // Reset registration data when switching to registration form
+    if (isLogin) {
+      setRegisterData({
+        name: '',
+        email: '',
+        password: '',
+        password2: '',
+        organization: '',
+        role: '',
+      });
+      setIsOrgSelector(false);
+    }
+  }, [isLogin]);
 
   // Completely redesigned input change handler to avoid unnecessary re-renders
   const handleLoginInputChange = useCallback((name, value) => {
@@ -970,6 +1145,34 @@ const Auth = () => {
     setShowConfirmPassword(prev => !prev);
   }, []);
 
+  // Debounced function to check if organization already exists
+  const checkOrgExists = useCallback(
+    debounce(async (orgName) => {
+      if (!orgName || registerData.role !== 'admin') return;
+      
+      try {
+        const result = await realtimeDb.getData(`organizations/${orgName}`);
+        
+        if (result.success && result.exists) {
+          setErrors(prev => ({
+            ...prev,
+            organization: 'This organization name is already taken'
+          }));
+          
+          setToast({
+            open: true,
+            message: `Organization "${orgName}" already exists. Please choose a different name.`,
+            title: 'Organization Exists',
+            severity: 'warning'
+          });
+        }
+      } catch (err) {
+        console.error('Error checking organization existence:', err);
+      }
+    }, 500),
+    [registerData.role]
+  );
+
   const validateLoginForm = useCallback(() => {
     const newErrors = {};
     
@@ -990,8 +1193,20 @@ const Auth = () => {
   const validateRegisterForm = useCallback(() => {
     const newErrors = {};
     
+    // First check if role is selected, and prioritize this error
     if (!registerData.role) {
-      newErrors.role = 'Please select a role';
+      newErrors.role = 'Please select a role to continue';
+      // If role is missing, return immediately with only this error
+      setErrors(newErrors);
+      
+      setToast({
+        open: true,
+        message: 'Please select your role before continuing',
+        title: 'Role Required',
+        severity: 'warning'
+      });
+      
+      return false;
     }
     
     if (!registerData.name) {
@@ -1000,6 +1215,11 @@ const Auth = () => {
     
     if (!registerData.organization) {
       newErrors.organization = 'Organization name is required';
+    }
+
+    // Check if reviewer has selected a valid organization
+    if (registerData.role === 'reviewer' && !registerData.organization) {
+      newErrors.organization = 'Please select your organization';
     }
     
     if (!registerData.email) {
@@ -1020,7 +1240,7 @@ const Auth = () => {
     
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
-  }, [registerData]);
+  }, [registerData, setToast]);
 
   const onLoginSubmit = useCallback((e) => {
     e.preventDefault();
@@ -1034,10 +1254,52 @@ const Auth = () => {
     }
   }, [loginData, validateLoginForm, dispatch]);
 
-  const onRegisterSubmit = useCallback((e) => {
+  const onRegisterSubmit = useCallback(async (e) => {
     e.preventDefault();
     
     if (validateRegisterForm()) {
+      // For admin role, check if organization already exists
+      if (registerData.role === 'admin') {
+        const orgCheckResult = await realtimeDb.getData(`organizations/${registerData.organization}`);
+        
+        if (orgCheckResult.success && orgCheckResult.exists) {
+          setErrors(prev => ({
+            ...prev,
+            organization: 'This organization name is already taken'
+          }));
+          
+          setToast({
+            open: true,
+            message: `Organization "${registerData.organization}" already exists. Please choose a different name.`,
+            title: 'Organization Exists',
+            severity: 'warning'
+          });
+          
+          return;
+        }
+      }
+      
+      // For reviewer role, check if organization exists
+      if (registerData.role === 'reviewer') {
+        const orgCheckResult = await realtimeDb.getData(`organizations/${registerData.organization}`);
+        
+        if (!orgCheckResult.success || !orgCheckResult.exists) {
+          setErrors(prev => ({
+            ...prev,
+            organization: 'This organization does not exist'
+          }));
+          
+          setToast({
+            open: true,
+            message: `Organization "${registerData.organization}" doesn't exist. Please check the name or contact your administrator.`,
+            title: 'Organization Not Found',
+            severity: 'error'
+          });
+          
+          return;
+        }
+      }
+      
       const userData = {
         name: registerData.name,
         email: registerData.email,
@@ -1045,6 +1307,7 @@ const Auth = () => {
         organization: registerData.organization,
         role: registerData.role,
       };
+      
       dispatch(register(userData));
     }
   }, [registerData, validateRegisterForm, dispatch]);
@@ -1079,11 +1342,33 @@ const Auth = () => {
       const result = await dispatch(resetPassword(forgotPasswordEmail)).unwrap();
       setResetMessage('Password reset email sent. Please check your inbox.');
       setResetMessageType('success');
+      
+      setToast({
+        open: true,
+        message: 'Password reset email sent. Please check your inbox.',
+        title: 'Email Sent',
+        severity: 'success'
+      });
     } catch (error) {
       setResetMessage(error.message || 'Failed to send reset email. Please try again.');
       setResetMessageType('error');
+      
+      setToast({
+        open: true,
+        message: error.message || 'Failed to send reset email. Please try again.',
+        title: 'Error',
+        severity: 'error'
+      });
     }
   }, [forgotPasswordEmail, dispatch]);
+
+  // Handle toast close
+  const handleCloseToast = () => {
+    setToast(prev => ({
+      ...prev,
+      open: false
+    }));
+  };
 
   // Memoize the form components to prevent re-renders
   const loginFormComponent = useMemo(() => (
@@ -1112,8 +1397,11 @@ const Auth = () => {
       showPassword={showPassword}
       toggleConfirmPassword={toggleShowConfirmPassword}
       showConfirmPassword={showConfirmPassword}
+      checkOrgExists={checkOrgExists}
+      isOrgSelector={isOrgSelector}
+      setIsOrgSelector={setIsOrgSelector}
     />
-  ), [registerData, handleRegisterInputChange, onRegisterSubmit, errors, isLoading, toggleAuthMode, toggleShowPassword, showPassword, toggleShowConfirmPassword, showConfirmPassword]);
+  ), [registerData, handleRegisterInputChange, onRegisterSubmit, errors, isLoading, toggleAuthMode, toggleShowPassword, showPassword, toggleShowConfirmPassword, showConfirmPassword, checkOrgExists, isOrgSelector]);
 
   // Add a new memoized forgotPasswordComponent
   const forgotPasswordComponent = useMemo(() => (
@@ -1135,7 +1423,7 @@ const Auth = () => {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        background: '#000',
+        background: 'linear-gradient(135deg, #000000 0%, #0F172A 100%)',
         position: 'relative',
         overflow: 'hidden',
       }}
@@ -1144,55 +1432,141 @@ const Auth = () => {
       <Box
         sx={{
           width: '100%',
-          maxWidth: 480,
-          px: 3,
-          py: 4,
+          maxWidth: { xs: 480, md: 1080 },
+          px: { xs: 2, md: 4 },
+          py: { xs: 3, md: 5 },
           position: 'relative',
           zIndex: 1,
+          display: 'flex',
+          flexDirection: { xs: 'column', md: 'row' },
+          alignItems: { xs: 'center', md: 'stretch' },
+          justifyContent: 'center',
+          gap: { xs: 4, md: 6 },
         }}
       >
-        <Logo isLogin={!isForgotPassword && isLogin} />
-        
-        <Box
+        {/* Logo and app info - now in the left column for md screens and above */}
+        <Box 
           sx={{
-            backgroundColor: 'rgba(0, 0, 0, 0.4)',
-            borderRadius: 2,
-            backdropFilter: 'blur(15px)',
-            boxShadow: '0 30px 60px rgba(0, 0, 0, 0.3)',
-            border: '1px solid rgba(255, 255, 255, 0.08)',
-            p: { xs: 3, sm: 4 },
-            position: 'relative',
-            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'center',
+            alignItems: 'center',
+            width: { xs: '100%', md: '45%' },
+            maxWidth: { xs: '100%', md: 450 },
+            order: { xs: 1, md: 1 },
+            p: { xs: 1, md: 3 }
           }}
         >
-          <AnimatePresence mode="wait">
-            {isForgotPassword ? (
-              forgotPasswordComponent
-            ) : isLogin ? (
-              loginFormComponent
-            ) : (
-              registerFormComponent
-            )}
-          </AnimatePresence>
-          
-          {/* Connection issue helper link */}
-          {errors.general && errors.general.includes('offline') && (
-            <Box sx={{ mt: 2, textAlign: 'center' }}>
-              <Typography
-                component={RouterLink}
-                to="/firebase-diagnostic"
-                variant="body2"
-                color="primary"
-                sx={{
-                  cursor: 'pointer',
-                  textDecoration: 'none',
-                  '&:hover': { textDecoration: 'underline' }
-                }}
-              >
-                Having trouble connecting? Click here to run diagnostics
-              </Typography>
+          <Logo isLogin={!isForgotPassword && isLogin} />
+
+          {/* Additional welcome info for desktop view */}
+          <Box 
+            sx={{ 
+              mt: 6, 
+              display: { xs: 'none', md: 'block' }, 
+              textAlign: 'center',
+              p: 3,
+              backgroundColor: 'rgba(255, 255, 255, 0.05)',
+              borderRadius: 3,
+              backdropFilter: 'blur(15px)',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+              boxShadow: '0 20px 40px rgba(0, 0, 0, 0.2)',
+              width: '100%'
+            }}
+          >
+            <Typography 
+              variant="h5" 
+              sx={{ 
+                mb: 2, 
+                fontWeight: 700,
+                color: 'primary.main',
+                background: 'linear-gradient(90deg, #4F46E5, #8B5CF6)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+              }}
+            >
+              Track invoices efficiently
+            </Typography>
+            <Typography variant="body1" color="text.secondary" sx={{ mb: 3, lineHeight: 1.7 }}>
+              Streamline your billing workflow with our powerful invoice management system.
+            </Typography>
+            
+            <Box sx={{ display: 'flex', justifyContent: 'center', gap: 4 }}>
+              <Box sx={{ textAlign: 'center' }}>
+                <AdminPanelSettingsIcon 
+                  sx={{ color: 'primary.main', fontSize: 40, mb: 1.5 }} 
+                />
+                <Typography variant="body1" fontWeight={600}>
+                  Admin Dashboard
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                  Manage all invoices
+                </Typography>
+              </Box>
+              <Box sx={{ textAlign: 'center' }}>
+                <PersonIcon 
+                  sx={{ color: 'secondary.main', fontSize: 40, mb: 1.5 }} 
+                />
+                <Typography variant="body1" fontWeight={600}>
+                  Reviewer Portal
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                  Review and process
+                </Typography>
+              </Box>
             </Box>
-          )}
+          </Box>
+        </Box>
+        
+        {/* Auth forms - now in the right column for md screens and above */}
+        <Box
+          sx={{
+            width: { xs: '100%', md: '55%' },
+            maxWidth: { xs: '100%', md: 520 },
+            order: { xs: 2, md: 2 }
+          }}
+        >
+          <Box
+            sx={{
+              backgroundColor: 'rgba(0, 0, 0, 0.6)',
+              borderRadius: 3,
+              backdropFilter: 'blur(20px)',
+              boxShadow: '0 30px 60px rgba(0, 0, 0, 0.4)',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+              p: { xs: 3, sm: 4 },
+              position: 'relative',
+              overflow: 'hidden',
+            }}
+          >
+            <AnimatePresence mode="wait">
+              {isForgotPassword ? (
+                forgotPasswordComponent
+              ) : isLogin ? (
+                loginFormComponent
+              ) : (
+                registerFormComponent
+              )}
+            </AnimatePresence>
+            
+            {/* Connection issue helper link */}
+            {errors.general && errors.general.includes('offline') && (
+              <Box sx={{ mt: 2, textAlign: 'center' }}>
+                <Typography
+                  component={RouterLink}
+                  to="/firebase-diagnostic"
+                  variant="body2"
+                  color="primary"
+                  sx={{
+                    cursor: 'pointer',
+                    textDecoration: 'none',
+                    '&:hover': { textDecoration: 'underline' }
+                  }}
+                >
+                  Having trouble connecting? Click here to run diagnostics
+                </Typography>
+              </Box>
+            )}
+          </Box>
         </Box>
       </Box>
       
@@ -1220,6 +1594,15 @@ const Auth = () => {
             }
           }
         }}
+      />
+      
+      {/* Toast notification for errors and success messages */}
+      <Toast
+        open={toast.open}
+        onClose={handleCloseToast}
+        message={toast.message}
+        title={toast.title}
+        severity={toast.severity}
       />
     </Box>
   );

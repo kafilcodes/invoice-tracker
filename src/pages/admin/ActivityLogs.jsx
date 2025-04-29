@@ -204,21 +204,21 @@ const ActivityLogs = () => {
   return (
     <Box sx={{ p: 3 }}>
       <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Box>
+    <Box>
           <Typography variant="h4" fontWeight="bold">Activity Timeline</Typography>
           {organizationName && (
             <Typography variant="subtitle1" color="text.secondary">
               {organizationName}
-            </Typography>
+        </Typography>
           )}
         </Box>
         <Tooltip title="Refresh Activities">
           <IconButton onClick={fetchActivityLogs} disabled={loading} sx={{ ml: 2 }}>
-            <RefreshIcon />
-          </IconButton>
-        </Tooltip>
-      </Box>
-      
+                <RefreshIcon />
+              </IconButton>
+            </Tooltip>
+          </Box>
+          
       {loading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
           <CircularProgress />
@@ -282,12 +282,12 @@ const ActivityLogs = () => {
                         {getActivityDescription(log)}
                       </Typography>
                       <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1 }}>
-                        <Typography variant="caption" color="text.secondary">
+                            <Typography variant="caption" color="text.secondary">
                           {getPerformerName(log)}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
                           {getTimeAgo(log.timestamp)}
-                        </Typography>
+                          </Typography>
                       </Box>
                     </Box>
                   </TimelineContent>
@@ -299,7 +299,7 @@ const ActivityLogs = () => {
               </Box>
             )}
           </Timeline>
-        </Paper>
+      </Paper>
       )}
     </Box>
   );

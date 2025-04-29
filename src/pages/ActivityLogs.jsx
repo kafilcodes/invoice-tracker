@@ -228,9 +228,9 @@ const ActivityLogs = () => {
           </Box>
           <Tooltip title="Refresh Activities">
             <IconButton onClick={fetchActivityLogs} disabled={loading} sx={{ ml: 2 }}>
-              <RefreshIcon />
-            </IconButton>
-          </Tooltip>
+                <RefreshIcon />
+              </IconButton>
+            </Tooltip>
         </Box>
         
         {loading ? (

@@ -424,25 +424,25 @@ const MobileInvoiceList = ({
   const trailingActions = (invoice) => (
     <TrailingActions>
       {user?.role === 'admin' && (
-        <SwipeAction
-          destructive={true}
-          onClick={() => handleDeleteInvoice(invoice)}
+      <SwipeAction
+        destructive={true}
+        onClick={() => handleDeleteInvoice(invoice)}
+      >
+        <Box
+          sx={{
+            height: '100%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: theme.palette.error.main,
+            color: theme.palette.error.contrastText,
+            width: 80,
+            px: 1,
+          }}
         >
-          <Box
-            sx={{
-              height: '100%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              backgroundColor: theme.palette.error.main,
-              color: theme.palette.error.contrastText,
-              width: 80,
-              px: 1,
-            }}
-          >
-            <Delete />
-          </Box>
-        </SwipeAction>
+          <Delete />
+        </Box>
+      </SwipeAction>
       )}
     </TrailingActions>
   );
@@ -608,17 +608,17 @@ const DesktopInvoiceList = ({
           <Button 
             variant="contained" 
             size="medium"
-            color="success"
+              color="success"
             sx={{ 
               minWidth: 40,
               height: 40,
               p: 0
             }}
-            onClick={(e) => {
-              e.stopPropagation();
-              handleUpdateStatus(invoice, 'approved');
-            }}
-          >
+              onClick={(e) => {
+                e.stopPropagation();
+                handleUpdateStatus(invoice, 'approved');
+              }}
+            >
             <CheckCircle fontSize="medium" />
           </Button>
         )}
@@ -626,17 +626,17 @@ const DesktopInvoiceList = ({
           <Button 
             variant="contained" 
             size="medium"
-            color="error"
+              color="error"
             sx={{ 
               minWidth: 40,
               height: 40,
               p: 0
             }}
-            onClick={(e) => {
-              e.stopPropagation();
-              handleUpdateStatus(invoice, 'rejected');
-            }}
-          >
+              onClick={(e) => {
+                e.stopPropagation();
+                handleUpdateStatus(invoice, 'rejected');
+              }}
+            >
             <Cancel fontSize="medium" />
           </Button>
         )}
@@ -644,17 +644,17 @@ const DesktopInvoiceList = ({
           <Button 
             variant="contained" 
             size="medium"
-            color="info"
+              color="info"
             sx={{ 
               minWidth: 40,
               height: 40,
               p: 0
             }}
-            onClick={(e) => {
-              e.stopPropagation();
-              handleUpdateStatus(invoice, 'paid');
-            }}
-          >
+              onClick={(e) => {
+                e.stopPropagation();
+                handleUpdateStatus(invoice, 'paid');
+              }}
+            >
             <Paid fontSize="medium" />
           </Button>
         )}
@@ -1099,7 +1099,7 @@ const InvoiceList = () => {
             allInvoicesFromOrg.sort((a, b) => {
               if (sort.direction === 'asc') {
                 return a[sort.field] > b[sort.field] ? 1 : -1;
-              } else {
+            } else {
                 return a[sort.field] < b[sort.field] ? 1 : -1;
               }
             });
@@ -1144,7 +1144,7 @@ const InvoiceList = () => {
     // Only fetch if user is logged in
     if (user?.uid) {
       fetchInvoicesFromOrganization();
-    }
+        }
   }, [dispatch, page, sort, filters, limit, user]);
 
   // Update URL when status filter changes
@@ -1523,20 +1523,20 @@ const InvoiceList = () => {
         >
           <Box sx={{ mb: { xs: 2, md: 0 } }}>
             <Typography variant="h4" component="h1" fontWeight="bold">
-              Invoices
-            </Typography>
-            <Typography variant="subtitle1" color="text.secondary" sx={{ mt: 0.5 }}>
-              Showing invoices for your organization only. {user?.role === 'reviewer' ? 'You can review any invoice from your organization.' : 'You can manage and track all your invoices here.'}
-            </Typography>
-          </Box>
+            Invoices
+          </Typography>
+          <Typography variant="subtitle1" color="text.secondary" sx={{ mt: 0.5 }}>
+            Showing invoices for your organization only. {user?.role === 'reviewer' ? 'You can review any invoice from your organization.' : 'You can manage and track all your invoices here.'}
+          </Typography>
+        </Box>
           {/* Only show Create Invoice button for non-reviewer roles */}
-          {user?.role !== 'reviewer' && (
-            <Button
-              variant="contained"
-              color="primary"
-              startIcon={<Add />}
-              component={RouterLink}
-              to="/invoices/create"
+        {user?.role !== 'reviewer' && (
+          <Button
+            variant="contained"
+            color="primary"
+            startIcon={<Add />}
+            component={RouterLink}
+            to="/invoices/create"
               sx={{ 
                 borderRadius: '8px',
                 px: 3,
@@ -1544,11 +1544,11 @@ const InvoiceList = () => {
                 boxShadow: theme.shadows[3],
                 '&:hover': { boxShadow: theme.shadows[8] },
               }}
-            >
-              Create Invoice
-            </Button>
-          )}
-        </Box>
+          >
+            Create Invoice
+          </Button>
+        )}
+      </Box>
       </Card>
 
       {/* Filters Section */}
@@ -1556,10 +1556,10 @@ const InvoiceList = () => {
         <CardContent>
           <Box sx={{ mb: 3, display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
             {/* Search Field */}
-            <TextField
+              <TextField
               placeholder="Search invoices..."
-              value={filters.search}
-              onChange={handleSearchChange}
+                value={filters.search}
+                onChange={handleSearchChange}
               variant="outlined"
               size="small"
               sx={{ 
@@ -1572,110 +1572,110 @@ const InvoiceList = () => {
                   borderRadius: 1,
                 }
               }}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <Search />
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <Search />
+                    </InputAdornment>
+                  ),
+                endAdornment: filters.search && (
+                  <InputAdornment position="end">
+                    <IconButton size="small" onClick={() => setFilters(prev => ({ ...prev, search: '' }))}>
+                      <Cancel />
+                    </IconButton>
                   </InputAdornment>
-                ),
-              endAdornment: filters.search && (
-                <InputAdornment position="end">
-                  <IconButton size="small" onClick={() => setFilters(prev => ({ ...prev, search: '' }))}>
-                    <Cancel />
-                  </IconButton>
-                </InputAdornment>
-              )
-            }}
-          />
-          
-          {/* Status Filter */}
-          <FormControl 
-            size="small" 
-            sx={{ 
-              minWidth: 180,
-              bgcolor: 'background.paper',
-              borderRadius: 1
-            }}
-          >
-            <Select
-              value={filters.status}
-              onChange={handleFilterChange}
-              name="status"
-              displayEmpty
-              renderValue={(selected) => {
-                if (selected === 'all') {
+                )
+              }}
+            />
+            
+            {/* Status Filter */}
+            <FormControl 
+              size="small" 
+              sx={{ 
+                minWidth: 180,
+                bgcolor: 'background.paper',
+                borderRadius: 1
+              }}
+            >
+                  <Select
+                    value={filters.status}
+                    onChange={handleFilterChange}
+                    name="status"
+                displayEmpty
+                renderValue={(selected) => {
+                  if (selected === 'all') {
+                    return <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <FilterList />
+                      <Typography>All Statuses</Typography>
+                    </Box>;
+                  }
                   return <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    {getStatusInfo(selected).icon}
+                    <Typography sx={{ textTransform: 'capitalize' }}>{selected}</Typography>
+                  </Box>;
+                }}
+                MenuProps={{
+                  PaperProps: {
+                    sx: {
+                      maxHeight: 300,
+                      width: 200
+                    }
+                  }
+                }}
+              >
+                <MenuItem value="all">
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                     <FilterList />
                     <Typography>All Statuses</Typography>
-                  </Box>;
-                }
-                return <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  {getStatusInfo(selected).icon}
-                  <Typography sx={{ textTransform: 'capitalize' }}>{selected}</Typography>
-                </Box>;
-              }}
-              MenuProps={{
-                PaperProps: {
-                  sx: {
-                    maxHeight: 300,
-                    width: 200
-                  }
-                }
-              }}
-            >
-              <MenuItem value="all">
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <FilterList />
-                  <Typography>All Statuses</Typography>
+                  </Box>
+                </MenuItem>
+                <MenuItem value="pending">
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <PendingActions />
+                    <Typography>Pending</Typography>
+                  </Box>
+                </MenuItem>
+                <MenuItem value="approved">
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <CheckCircle />
+                    <Typography>Approved</Typography>
+                  </Box>
+                </MenuItem>
+                <MenuItem value="rejected">
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Cancel />
+                    <Typography>Rejected</Typography>
+                  </Box>
+                </MenuItem>
+                <MenuItem value="paid">
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Paid />
+                    <Typography>Paid</Typography>
+                  </Box>
+                </MenuItem>
+                <MenuItem value="overdue">
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Alarm />
+                    <Typography>Overdue</Typography>
+                  </Box>
+                </MenuItem>
+                  </Select>
+                </FormControl>
+                
+                {/* Reset Filters Button */}
+                {(filters.search || filters.status || filters.date) && (
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    color="primary"
+                    onClick={handleResetFilters}
+                    startIcon={<RestartAlt />}
+                    sx={{ borderRadius: 1 }}
+                  >
+                    Reset Filters
+                  </Button>
+                )}
                 </Box>
-              </MenuItem>
-              <MenuItem value="pending">
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <PendingActions />
-                  <Typography>Pending</Typography>
-                </Box>
-              </MenuItem>
-              <MenuItem value="approved">
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <CheckCircle />
-                  <Typography>Approved</Typography>
-                </Box>
-              </MenuItem>
-              <MenuItem value="rejected">
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Cancel />
-                  <Typography>Rejected</Typography>
-                </Box>
-              </MenuItem>
-              <MenuItem value="paid">
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Paid />
-                  <Typography>Paid</Typography>
-                </Box>
-              </MenuItem>
-              <MenuItem value="overdue">
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Alarm />
-                  <Typography>Overdue</Typography>
-                </Box>
-              </MenuItem>
-            </Select>
-          </FormControl>
-          
-          {/* Reset Filters Button */}
-          {(filters.search || filters.status || filters.date) && (
-            <Button
-              variant="outlined"
-              size="small"
-              color="primary"
-              onClick={handleResetFilters}
-              startIcon={<RestartAlt />}
-              sx={{ borderRadius: 1 }}
-            >
-              Reset Filters
-            </Button>
-          )}
-          </Box>
         </CardContent>
       </Card>
 
@@ -1700,27 +1700,27 @@ const InvoiceList = () => {
             boxShadow: theme.shadows[2],
             backgroundColor: theme.palette.mode === 'dark' ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.01)'
           }}>
-            <Typography variant="h1" sx={{ fontSize: '4rem', mb: 2, color: 'text.secondary' }}>
-              📋
-            </Typography>
-            <Typography variant="h5" gutterBottom fontWeight="medium">
-              No invoices found yet! 😢
-            </Typography>
-            <Typography variant="body1" color="text.secondary" paragraph>
-              {filters.search || filters.status || filters.date ? 
-                "No invoices match your current filters. Try adjusting your search criteria." : 
-                user?.role === 'reviewer' ? 
-                  "There are no invoices in your organization to review at the moment." : 
-                  "Get started by creating your first invoice!"
-              }
-            </Typography>
+          <Typography variant="h1" sx={{ fontSize: '4rem', mb: 2, color: 'text.secondary' }}>
+            📋
+          </Typography>
+          <Typography variant="h5" gutterBottom fontWeight="medium">
+            No invoices found yet! 😢
+          </Typography>
+          <Typography variant="body1" color="text.secondary" paragraph>
+            {filters.search || filters.status || filters.date ? 
+              "No invoices match your current filters. Try adjusting your search criteria." : 
+              user?.role === 'reviewer' ? 
+                "There are no invoices in your organization to review at the moment." : 
+                "Get started by creating your first invoice!"
+            }
+          </Typography>
             {!filters.search && !filters.status && !filters.date && user?.role !== 'reviewer' && (
-              <Button
-                variant="contained"
-                color="primary"
-                startIcon={<Add />}
-                component={RouterLink}
-                to="/invoices/create"
+            <Button
+              variant="contained"
+              color="primary"
+              startIcon={<Add />}
+              component={RouterLink}
+              to="/invoices/create"
                 sx={{ 
                   mt: 2,
                   borderRadius: '8px',
@@ -1729,10 +1729,10 @@ const InvoiceList = () => {
                   boxShadow: theme.shadows[3],
                   '&:hover': { boxShadow: theme.shadows[8] },
                 }}
-              >
-                Create Your First Invoice
-              </Button>
-            )}
+            >
+              Create Your First Invoice
+            </Button>
+          )}
           </Card>
         </motion.div>
       ) : (
@@ -1953,7 +1953,7 @@ const InvoiceList = () => {
             >
               Save Changes
             </Button>
-          </Box>
+                      </Box>
         </Box>
       </SwipeableDrawer>
     </Box>

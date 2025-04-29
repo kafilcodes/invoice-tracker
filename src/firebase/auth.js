@@ -111,6 +111,44 @@ class AuthService {
       // Ensure userData is an object even if undefined was passed
       userData = userData || {};
       
+      // Get organization ID
+      const orgId = userData.organization;
+      
+      // Validate organization first for both roles
+      if (orgId) {
+        // For admin role, ensure organization doesn't already exist
+        if (userData.role === 'admin') {
+          // Check if organization already exists
+          const orgCheck = await realtimeDb.getData(`organizations/${orgId}`);
+          
+          if (orgCheck.success && orgCheck.exists) {
+            return {
+              success: false,
+              error: {
+                code: 'org/already-exists',
+                message: `Organization "${orgId}" already exists. Please choose a different name.`
+              }
+            };
+          }
+        }
+        
+        // For reviewer role, ensure organization does exist
+        if (userData.role === 'reviewer') {
+          // Check if organization exists
+          const orgCheck = await realtimeDb.getData(`organizations/${orgId}`);
+          
+          if (!orgCheck.success || !orgCheck.exists) {
+            return {
+              success: false,
+              error: {
+                code: 'org/not-found',
+                message: `Organization "${orgId}" doesn't exist. Please check the name or contact your administrator.`
+              }
+            };
+          }
+        }
+      }
+      
       // Create user in Firebase Auth
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
@@ -139,9 +177,6 @@ class AuthService {
       if (!userDataResult.success) {
         console.error("Error saving user data:", userDataResult.error);
       }
-      
-      // Get organization ID
-      const orgId = userData.organization;
       
       if (orgId) {
         // Handle different user roles
@@ -175,25 +210,18 @@ class AuthService {
           // For reviewer users, add them to the organization's members collection
           console.log(`Adding reviewer user to organization: ${orgId}`);
           
-          // First, check if organization exists
-          const orgExists = await realtimeDb.getData(`organizations/${orgId}`);
+          // We already verified organization exists above, now add the user
+          await realtimeDb.setData(`organizations/${orgId}/members/${user.uid}`, {
+            uid: user.uid,
+            name: userData.name || "",
+            email: email,
+            role: 'reviewer',
+            joinedAt: timestamp,
+            department: userData.department || "General",
+            active: true
+          });
           
-          if (orgExists.success && orgExists.data) {
-            // Add user to organization members
-            await realtimeDb.setData(`organizations/${orgId}/members/${user.uid}`, {
-              uid: user.uid,
-              name: userData.name || "",
-              email: email,
-              role: 'reviewer',
-              joinedAt: timestamp,
-              department: userData.department || "General",
-              active: true
-            });
-            
-            console.log(`Successfully added reviewer to organization's members`);
-          } else {
-            console.error(`Organization ${orgId} does not exist for reviewer to join`);
-          }
+          console.log(`Successfully added reviewer to organization's members`);
         }
       }
       
